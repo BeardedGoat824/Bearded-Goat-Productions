@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Playfair+Display:ital,wght@1,900&family=Oswald:wght@300;500&family=Special+Elite&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#000;color:#fff;-webkit-font-smoothing:antialiased}
+a{color:#7BE04B;text-decoration:none}
+a:hover{color:#fff}
+@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes flicker{0%,100%{opacity:.92}42%{opacity:1}44%{opacity:.62}46%{opacity:1}78%{opacity:.8}80%{opacity:1}}
+@keyframes emberdrift{from{transform:translateY(0)}to{transform:translateY(-60px)}}
+</style>
+</helmet>
+
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect width="200" height="200" fill="#000"/><text x="30" y="90" font-family="Georgia,serif" font-weight="900" font-size="34" fill="#7BE04B">FG</text><text x="100" y="140" font-family="Georgia,serif" font-weight="900" font-size="34" fill="#C1440E">RD</text></svg></template>
+<div style="min-height:100vh;background:#000;position:relative;overflow:hidden;font-family:Oswald,system-ui,sans-serif">
+
+<div style="position:fixed;inset:0;pointer-events:none;z-index:40;opacity:.16;mix-blend-mode:screen;background-image:url(&quot;data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxNjAnIGhlaWdodD0nMTYwJz48ZmlsdGVyIGlkPSduJz48ZmVUdXJidWxlbmNlIHR5cGU9J2ZyYWN0YWxOb2lzZScgYmFzZUZyZXF1ZW5jeT0nLjg1JyBudW1PY3RhdmVzPSczJy8+PC9maWx0ZXI+PHJlY3Qgd2lkdGg9JzE2MCcgaGVpZ2h0PScxNjAnIGZpbHRlcj0ndXJsKCUyM24pJy8+PC9zdmc+&quot;)"></div>
+
+<div style="position:relative;z-index:2;border-bottom:1px solid #1e1e1e"></div>
+
+<div style="position:relative;z-index:2;display:flex;flex-wrap:wrap;align-items:stretch;gap:0">
+
+<div style="flex:1 1 440px;min-width:min(100%,340px);position:relative;padding:clamp(26px,4vw,60px) clamp(22px,3.4vw,52px) clamp(40px,5vw,72px);border-right:1px solid #171717;box-sizing:border-box;background:linear-gradient(180deg,rgba(123,224,75,.05),rgba(0,0,0,0) 46%)">
+
+<div style="display:flex;align-items:baseline;gap:10px;font-family:'Special Elite',monospace;font-size:10.5px;letter-spacing:.3em;text-transform:uppercase;color:#7BE04B;margin-bottom:18px">
+<span style="display:inline-block;width:7px;height:7px;background:#7BE04B;border-radius:50%;animation:flicker 4s infinite"></span>
+<span>Side A — foxfire in the holler</span>
+</div>
+
+<h1 style="margin:0;font-family:Anton,Impact,sans-serif;font-weight:400;font-size:clamp(46px,7.6vw,104px);line-height:.84;letter-spacing:-.015em;text-transform:uppercase;color:#fff;text-wrap:balance">
+Foxfire<br><span style="color:#7BE04B">and</span><br>Gunpowder
+</h1>
+
+<p style="margin:20px 0 0;max-width:34ch;font-family:Oswald,sans-serif;font-weight:300;font-size:clamp(13px,1.15vw,15px);line-height:1.6;letter-spacing:.02em;color:#8e8e8e;text-wrap:pretty">
+Southern gothic with the low end kicked out from under it. Slide guitar, church bells, dusty roads.
+</p>
+
+<div style="margin-top:clamp(24px,3vw,40px);border:1px solid #232323;border-top:3px solid #7BE04B;background:#060606;padding:12px">
+<div style="display:flex;justify-content:space-between;align-items:center;font-family:'Special Elite',monospace;font-size:9.5px;letter-spacing:.24em;text-transform:uppercase;color:#5a5a5a;padding:0 2px 10px">
+<span>Now playing / full catalog</span><span style="color:#7BE04B">live feed</span>
+</div>
+<iframe title="Foxfire and Gunpowder on Spotify" src="https://open.spotify.com/embed/artist/5CTMA9oHdEzSaQaydeF4Oi?utm_source=generator&theme=0" width="100%" height="{{ playerHeight }}" style="border:0;display:block;border-radius:2px" frameborder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+</div>
+
+<a href="https://open.spotify.com/artist/5CTMA9oHdEzSaQaydeF4Oi" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:9px;margin-top:16px;font-family:'Special Elite',monospace;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7BE04B;border-bottom:1px solid rgba(123,224,75,.35);padding-bottom:3px" style-hover="color:#fff;border-bottom-color:#fff">Open in Spotify →</a>
+
+<div style="position:absolute;right:-2px;top:0;bottom:0;width:1px;background:linear-gradient(180deg,rgba(123,224,75,.5),rgba(193,68,14,.5));pointer-events:none"></div>
+</div>
+
+<div style="flex:1 1 440px;min-width:min(100%,340px);position:relative;padding:clamp(26px,4vw,60px) clamp(22px,3.4vw,52px) clamp(40px,5vw,72px);box-sizing:border-box;display:flex;flex-direction:column;align-items:flex-end;text-align:right;background:linear-gradient(180deg,rgba(193,68,14,.07),rgba(0,0,0,0) 46%)">
+
+<div style="display:flex;align-items:baseline;gap:10px;font-family:'Special Elite',monospace;font-size:10.5px;letter-spacing:.3em;text-transform:uppercase;color:#C1440E;margin-bottom:18px">
+<span>Side B — the dirt it all ends in</span>
+<span style="display:inline-block;width:7px;height:7px;background:#C1440E;border-radius:50%;animation:flicker 5.5s infinite"></span>
+</div>
+
+<h1 style="margin:0;font-family:'Playfair Display',Georgia,serif;font-style:italic;font-weight:900;font-size:clamp(44px,7.2vw,100px);line-height:.88;letter-spacing:-.02em;color:#fff;text-wrap:balance">
+Red Dirt<br><span style="color:#C1440E">Requiem</span>
+</h1>
+
+<p style="margin:20px 0 0;max-width:34ch;font-family:Oswald,sans-serif;font-weight:300;font-size:clamp(13px,1.15vw,15px);line-height:1.6;letter-spacing:.02em;color:#8e8e8e;text-wrap:pretty">
+Country metal with no apology in it. Distorted riffs under banjo and fiddle, double bass, breakdowns.
+</p>
+
+<div style="width:100%;margin-top:clamp(24px,3vw,40px);border:1px solid #232323;border-top:3px solid #C1440E;background:#060606;padding:12px;box-sizing:border-box">
+<div style="display:flex;justify-content:space-between;align-items:center;font-family:'Special Elite',monospace;font-size:9.5px;letter-spacing:.24em;text-transform:uppercase;color:#5a5a5a;padding:0 2px 10px">
+<span style="color:#C1440E">live feed</span><span>Now playing / full catalog</span>
+</div>
+<iframe title="Red Dirt Requiem on Spotify" src="https://open.spotify.com/embed/artist/0lGfYIZ65fUVjyHAQPytb8?utm_source=generator&theme=0" width="100%" height="{{ playerHeight }}" style="border:0;display:block;border-radius:2px" frameborder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+</div>
+
+<a href="https://open.spotify.com/artist/0lGfYIZ65fUVjyHAQPytb8" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:9px;margin-top:16px;font-family:'Special Elite',monospace;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#C1440E;border-bottom:1px solid rgba(193,68,14,.35);padding-bottom:3px" style-hover="color:#fff;border-bottom-color:#fff">Open in Spotify →</a>
+</div>
+
+</div>
+
+<div style="position:relative;z-index:2;border-top:1px solid #171717;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding:16px clamp(22px,3.4vw,52px)">
+<span style="font-family:'Special Elite',monospace;font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:#4a4a4a">Catalog syncs itself — every new release shows up here on its own</span>
+<span style="font-family:'Special Elite',monospace;font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:#4a4a4a">Foxfire <span style="color:#7BE04B">✦</span> Requiem</span>
+</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;compactPlayers&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Players&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const compact = this.props.compactPlayers ?? false;
+    return { playerHeight: compact ? 232 : 452 };
+  }
+}
+
+</script>
+</body>
+</html>
