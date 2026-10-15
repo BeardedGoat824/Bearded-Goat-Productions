@@ -12,8 +12,8 @@ android {
         applicationId = "com.spot2ytm.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "2.1"
 
         // Default Spotify app credentials. Override them in gradle.properties / -P flags,
         // or change them at runtime in the app's Settings sheet.

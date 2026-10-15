@@ -193,11 +193,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         launch {
                             gate.withPermit {
                                 updateTrack(index) { it.copy(status = MatchStatus.SEARCHING) }
-                                val videoId = youtube.searchVideoId(track.searchQuery)
-                                updateTrack(index) {
-                                    it.copy(videoId = videoId, status = if (videoId != null) MatchStatus.MATCHED else MatchStatus.NOT_FOUND)
+                                val (videoId, status) = when (val result = youtube.search(track)) {
+                                    is YouTubeRepository.SearchResult.Found -> {
+                                        log("Matched [${result.videoId}] ← ${track.searchQuery}")
+                                        result.videoId to MatchStatus.MATCHED
+                                    }
+                                    YouTubeRepository.SearchResult.NotFound -> {
+                                        log("No match for: ${track.searchQuery}")
+                                        null to MatchStatus.NOT_FOUND
+                                    }
+                                    is YouTubeRepository.SearchResult.Failed -> {
+                                        log("Couldn't search \"${track.searchQuery}\": ${result.reason}")
+                                        null to MatchStatus.FAILED
+                                    }
                                 }
-                                if (videoId != null) log("Matched [$videoId] ← ${track.searchQuery}") else log("No match for: ${track.searchQuery}")
+                                updateTrack(index) { it.copy(videoId = videoId, status = status) }
                                 done++
                                 _state.update { it.copy(matchStatus = StatusLine("Matching… $done of $total", Tone.WARN)) }
                             }
@@ -205,7 +215,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 val matched = state.value.matchedIds.size
-                _state.update { it.copy(matchStatus = StatusLine("Finished! Matched $matched of $total tracks.", Tone.OK)) }
+                val failed = state.value.tracks.count { it.status == MatchStatus.FAILED }
+                val summary = if (failed > 0) {
+                    StatusLine("Matched $matched of $total. $failed couldn't reach YouTube — tap Match all again to retry them.", Tone.WARN)
+                } else {
+                    StatusLine("Finished! Matched $matched of $total tracks.", Tone.OK)
+                }
+                _state.update { it.copy(matchStatus = summary) }
             } finally {
                 // Covers cancellation too: anything left mid-search goes back to pending.
                 _state.update { s ->
@@ -298,7 +314,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     companion object {
-        private const val MATCH_CONCURRENCY = 4
+        private const val MATCH_CONCURRENCY = 2
         private val TOKEN_PATTERN = Regex("""ya29\.[a-zA-Z0-9_\-]+""")
         const val OAUTH_PLAYGROUND_URL =
             "https://developers.google.com/oauthplayground/#step1&apisSelect=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fyoutube" +
