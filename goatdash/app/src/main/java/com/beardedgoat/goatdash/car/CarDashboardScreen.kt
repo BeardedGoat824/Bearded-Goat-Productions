@@ -22,7 +22,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.beardedgoat.goatdash.GoatDashApp
 import com.beardedgoat.goatdash.R
+import com.beardedgoat.goatdash.dash.DashPage
 import com.beardedgoat.goatdash.dash.GaugeRenderer
+import com.beardedgoat.goatdash.dash.isShifting
 import com.beardedgoat.goatdash.obd.ConnState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -54,12 +56,19 @@ class CarDashboardScreen(carContext: CarContext) : Screen(carContext), SurfaceCa
         lifecycleScope.launch {
             // Only redraw while the gauges are actually on screen (not behind the codes list).
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                combine(app.obd.live, app.dashboard.config, app.dashboard.currentPage, app.obd.state) { _, _, _, _ -> Unit }
-                    .conflate()
-                    .collect {
-                        render()
-                        delay(50) // ~20 fps is plenty and spares the car's head unit.
-                    }
+                launch {
+                    combine(app.obd.live, app.dashboard.config, app.dashboard.currentPage, app.obd.state) { _, _, _, _ -> Unit }
+                        .conflate()
+                        .collect {
+                            render()
+                            delay(50) // ~20 fps is plenty and spares the car's head unit.
+                        }
+                }
+                // Keep a lit shift light blinking even when readings arrive slower than the flash.
+                while (true) {
+                    if (currentPage().isShifting(app.obd.live.value)) render()
+                    delay(GaugeRenderer.FLASH_MS / 2)
+                }
             }
         }
         // The action strip changes with the connection (connect vs. disconnect button).
@@ -106,10 +115,8 @@ class CarDashboardScreen(carContext: CarContext) : Screen(carContext), SurfaceCa
             // Stay inside the area not covered by Android Auto's own controls.
             val area = visibleArea?.takeIf { !it.isEmpty } ?: Rect(0, 0, container.width, container.height)
             val scale = container.dpi / 160f
-            val cfg = app.dashboard.config.value
-            val page = cfg.pages.getOrNull(app.dashboard.currentPage.value) ?: cfg.pages.first()
             renderer.drawPage(
-                canvas, page, app.obd.live.value, cfg.imperial,
+                canvas, currentPage(), app.obd.live.value, app.dashboard.config.value.imperial,
                 area.left.toFloat(), area.top.toFloat(), area.width().toFloat(), area.height().toFloat(), scale,
             )
             statusLine()?.let { msg ->
@@ -121,6 +128,11 @@ class CarDashboardScreen(carContext: CarContext) : Screen(carContext), SurfaceCa
         } finally {
             s.unlockCanvasAndPost(canvas)
         }
+    }
+
+    private fun currentPage(): DashPage {
+        val cfg = app.dashboard.config.value
+        return cfg.pages.getOrNull(app.dashboard.currentPage.value) ?: cfg.pages.first()
     }
 
     private fun statusLine(): String? = when (val st = app.obd.state.value) {

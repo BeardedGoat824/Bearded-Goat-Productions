@@ -49,7 +49,10 @@ class DemoTransport(private val clock: () -> Long = System::currentTimeMillis) :
         val phase = (t % 40.0) / 40.0
         val speed = max(0.0, 105 * sin(phase * PI)) // km/h
         val gear = min(5, 1 + (speed / 25).toInt())
-        val rpm = if (speed < 2) 780.0 + 20 * sin(t * 3) else 1100 + speed * 55 / gear + 300 * sin(t * 1.3)
+        val cruiseRpm = if (speed < 2) 780.0 + 20 * sin(t * 3) else 1100 + speed * 55 / gear + 300 * sin(t * 1.3)
+        // Once a lap, wind second gear out to ~6500 rpm so the shift light has something to do.
+        val pull = ((phase - 0.12) / 0.10).coerceIn(0.0, 1.0)
+        val rpm = if (phase in 0.12..0.22) 3000 + 3500 * pull else cruiseRpm
         val throttle = (12 + 70 * max(0.0, sin(phase * 2 * PI))).coerceIn(0.0, 100.0)
         val coolant = min(92.0, 25 + t * 1.5) // warms up over the first minute
         fun b(v: Double) = v.roundToInt().coerceIn(0, 255)

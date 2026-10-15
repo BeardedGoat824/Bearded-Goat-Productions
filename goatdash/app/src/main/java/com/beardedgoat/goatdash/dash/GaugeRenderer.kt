@@ -28,9 +28,14 @@ class GaugeRenderer {
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
-    private val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = MUTED; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
+    private val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
     private val rect = RectF()
     private val path = Path()
+
+    // Ink colours for the gauge being drawn; they flip to black/white while a shift light flashes.
+    private var ink = TEXT
+    private var muted = MUTED
+    private var track = TRACK
 
     /** Cell rectangles for [page] laid out inside the given area (row by row). */
     fun cellRects(page: DashPage, left: Float, top: Float, width: Float, height: Float, scale: Float): List<RectF> {
@@ -65,24 +70,50 @@ class GaugeRenderer {
         height: Float,
         scale: Float,
         selectedSlot: Int = -1,
+        nowMillis: Long = System.currentTimeMillis(),
     ) {
+        // Shift lights blink on and off together, a few times a second.
+        val flashPhase = (nowMillis / FLASH_MS) % 2 == 0L
         cellRects(page, left, top, width, height, scale).forEachIndexed { i, cell ->
             val gauge = page.gauges.getOrNull(i) ?: return@forEachIndexed
             val pid = Pids[gauge.pidId] ?: return@forEachIndexed
-            drawGauge(canvas, cell, gauge, pid, live, imperial, scale, selected = i == selectedSlot)
+            drawGauge(canvas, cell, gauge, pid, live, imperial, scale, selected = i == selectedSlot, flashPhase = flashPhase)
         }
     }
 
-    private fun drawGauge(canvas: Canvas, cell: RectF, gauge: Gauge, pid: Pid, live: LiveData, imperial: Boolean, scale: Float, selected: Boolean) {
+    private fun drawGauge(canvas: Canvas, cell: RectF, gauge: Gauge, pid: Pid, live: LiveData, imperial: Boolean, scale: Float, selected: Boolean, flashPhase: Boolean) {
         val value = live.values[pid.id]
         val unsupported = pid.id in live.unsupported
         val warning = gauge.warnAbove != null && value != null && value > gauge.warnAbove
-        val color = if (warning) GaugeColors.WARNING else gauge.color
+        val shifting = gauge.isShifting(live)
+        val flashOn = shifting && flashPhase
+
+        if (flashOn) {
+            // Fill the tile with the shift colour and draw everything else in black or white,
+            // whichever reads better on it, so the number stays legible mid-flash.
+            val flash = gauge.flashColor
+            ink = if (isLight(flash)) Color.BLACK else Color.WHITE
+            muted = (ink and 0x00FFFFFF) or 0xB3000000.toInt()
+            track = (ink and 0x00FFFFFF) or 0x40000000
+            panel.color = flash
+        } else {
+            ink = TEXT
+            muted = MUTED
+            track = TRACK
+            panel.color = PANEL
+        }
+        small.color = muted
+        val color = when {
+            flashOn -> ink
+            warning -> GaugeColors.WARNING
+            else -> gauge.color
+        }
 
         val radius = 14f * scale
         canvas.drawRoundRect(cell, radius, radius, panel)
-        panelStroke.strokeWidth = (if (selected || warning) 2.5f else 1f) * scale
+        panelStroke.strokeWidth = (if (shifting) 4f else if (selected || warning) 2.5f else 1f) * scale
         panelStroke.color = when {
+            shifting -> if (flashOn) ink else gauge.flashColor
             selected -> Color.WHITE
             warning -> GaugeColors.WARNING
             else -> PANEL_EDGE
@@ -93,16 +124,18 @@ class GaugeRenderer {
         val unitText = pid.unit.label(imperial)
         val fraction = value?.let { ((it - pid.min) / (pid.max - pid.min)).toFloat().coerceIn(0f, 1f) }
         val warnFraction = gauge.warnAbove?.let { ((it - pid.min) / (pid.max - pid.min)).toFloat().coerceIn(0f, 1f) }
+        val shiftMark = gauge.shiftAt?.let { ((it - pid.min) / (pid.max - pid.min)).toFloat().coerceIn(0f, 1f) }
+        val markColor = if (flashOn) ink else gauge.flashColor
 
         when (gauge.style) {
-            GaugeStyle.DIAL -> drawDial(canvas, cell, pid, valueText, unitText, fraction, warnFraction, color, scale)
-            GaugeStyle.BAR -> drawBar(canvas, cell, pid, valueText, unitText, fraction, warnFraction, color, scale)
+            GaugeStyle.DIAL -> drawDial(canvas, cell, pid, valueText, unitText, fraction, warnFraction, shiftMark, markColor, color, scale)
+            GaugeStyle.BAR -> drawBar(canvas, cell, pid, valueText, unitText, fraction, warnFraction, shiftMark, markColor, color, scale)
             GaugeStyle.DIGITAL -> drawDigital(canvas, cell, pid, valueText, unitText, color, scale)
             GaugeStyle.GRAPH -> drawGraph(canvas, cell, pid, valueText, unitText, live.history[pid.id].orEmpty(), color, scale)
         }
     }
 
-    private fun drawDial(canvas: Canvas, cell: RectF, pid: Pid, valueText: String, unitText: String, fraction: Float?, warnFraction: Float?, color: Int, scale: Float) {
+    private fun drawDial(canvas: Canvas, cell: RectF, pid: Pid, valueText: String, unitText: String, fraction: Float?, warnFraction: Float?, shiftMark: Float?, markColor: Int, color: Int, scale: Float) {
         val pad = 10f * scale
         val r = min(cell.width() - pad * 2, (cell.height() - pad * 2) * 1.18f) / 2f
         val cx = cell.centerX()
@@ -112,7 +145,7 @@ class GaugeRenderer {
         rect.set(cx - arcR, cy - arcR, cx + arcR, cy + arcR)
 
         arc.strokeWidth = stroke
-        arc.color = TRACK
+        arc.color = track
         canvas.drawArc(rect, START, SWEEP, false, arc)
         if (warnFraction != null) {
             arc.color = GaugeColors.WARNING and 0x66FFFFFF
@@ -124,7 +157,7 @@ class GaugeRenderer {
         }
 
         // Tick marks just inside the arc.
-        line.color = MUTED
+        line.color = muted
         line.strokeWidth = 1.2f * scale
         for (i in 0..10) {
             val a = Math.toRadians((START + SWEEP * i / 10f).toDouble())
@@ -133,18 +166,28 @@ class GaugeRenderer {
             canvas.drawLine(cx + (cos(a) * inner).toFloat(), cy + (sin(a) * inner).toFloat(), cx + (cos(a) * outer).toFloat(), cy + (sin(a) * outer).toFloat(), line)
         }
 
+        // Shift point: a bold mark across the arc.
+        if (shiftMark != null) {
+            val a = Math.toRadians((START + SWEEP * shiftMark).toDouble())
+            val outer = arcR + stroke * 0.7f
+            val inner = arcR - stroke * 0.9f
+            line.color = markColor
+            line.strokeWidth = 3f * scale
+            canvas.drawLine(cx + (cos(a) * inner).toFloat(), cy + (sin(a) * inner).toFloat(), cx + (cos(a) * outer).toFloat(), cy + (sin(a) * outer).toFloat(), line)
+        }
+
         // Needle.
         if (fraction != null) {
             val a = Math.toRadians((START + SWEEP * fraction).toDouble())
             val len = arcR - stroke * 1.3f
-            line.color = Color.WHITE
+            line.color = ink
             line.strokeWidth = 2.2f * scale
             canvas.drawLine(cx, cy, cx + (cos(a) * len).toFloat(), cy + (sin(a) * len).toFloat(), line)
             fill.color = color
             canvas.drawCircle(cx, cy, stroke * 0.45f, fill)
         }
 
-        text.color = TEXT
+        text.color = ink
         text.textAlign = Paint.Align.CENTER
         fitText(text, valueText, r * 1.15f, r * 0.42f)
         canvas.drawText(valueText, cx, cy + r * 0.52f, text)
@@ -153,7 +196,7 @@ class GaugeRenderer {
         canvas.drawText("${pid.shortName.uppercase()}  $unitText", cx, cy + r * 0.82f, small)
     }
 
-    private fun drawBar(canvas: Canvas, cell: RectF, pid: Pid, valueText: String, unitText: String, fraction: Float?, warnFraction: Float?, color: Int, scale: Float) {
+    private fun drawBar(canvas: Canvas, cell: RectF, pid: Pid, valueText: String, unitText: String, fraction: Float?, warnFraction: Float?, shiftMark: Float?, markColor: Int, color: Int, scale: Float) {
         val pad = 12f * scale
         val innerW = cell.width() - pad * 2
         val labelSize = min(cell.height() * 0.13f, 16f * scale)
@@ -163,7 +206,7 @@ class GaugeRenderer {
 
         val barH = (cell.height() * 0.16f).coerceIn(6f * scale, 22f * scale)
         val barTop = cell.bottom - pad - barH
-        text.color = TEXT
+        text.color = ink
         text.textAlign = Paint.Align.LEFT
         val space = barTop - (cell.top + pad + small.textSize) - pad * 0.5f
         fitText(text, valueText, innerW * 0.7f, space * 0.75f)
@@ -174,7 +217,7 @@ class GaugeRenderer {
         canvas.drawText(unitText, unitX, baseline, small)
 
         rect.set(cell.left + pad, barTop, cell.right - pad, barTop + barH)
-        fill.color = TRACK
+        fill.color = track
         canvas.drawRoundRect(rect, barH / 2, barH / 2, fill)
         if (fraction != null && fraction > 0f) {
             fill.color = color
@@ -186,6 +229,12 @@ class GaugeRenderer {
             line.color = GaugeColors.WARNING
             line.strokeWidth = 2.5f * scale
             canvas.drawLine(x, barTop - 3f * scale, x, barTop + barH + 3f * scale, line)
+        }
+        if (shiftMark != null) {
+            val x = cell.left + pad + innerW * shiftMark
+            line.color = markColor
+            line.strokeWidth = 3f * scale
+            canvas.drawLine(x, barTop - 4f * scale, x, barTop + barH + 4f * scale, line)
         }
     }
 
@@ -215,7 +264,7 @@ class GaugeRenderer {
         fitText(small, pid.shortName.uppercase(), cell.width() * 0.5f, labelSize)
         canvas.drawText(pid.shortName.uppercase(), cell.left + pad, cell.top + pad + small.textSize, small)
 
-        text.color = TEXT
+        text.color = ink
         text.textAlign = Paint.Align.RIGHT
         val shown = "$valueText $unitText"
         fitText(text, shown, cell.width() * 0.55f, labelSize * 1.5f)
@@ -225,7 +274,7 @@ class GaugeRenderer {
         val gBottom = cell.bottom - pad
         val gLeft = cell.left + pad
         val gRight = cell.right - pad
-        line.color = TRACK
+        line.color = track
         line.strokeWidth = 1f * scale
         canvas.drawLine(gLeft, gBottom, gRight, gBottom, line)
         if (history.size < 2) return
@@ -257,6 +306,13 @@ class GaugeRenderer {
         canvas.drawPath(path, fill)
     }
 
+    private fun isLight(color: Int): Boolean {
+        val r = color shr 16 and 0xFF
+        val g = color shr 8 and 0xFF
+        val b = color and 0xFF
+        return r * 0.299 + g * 0.587 + b * 0.114 > 150
+    }
+
     /** Shrinks [paint]'s text size from [preferred] until [s] fits in [maxWidth]. */
     private fun fitText(paint: Paint, s: String, maxWidth: Float, preferred: Float) {
         paint.textSize = preferred.coerceAtLeast(1f)
@@ -273,5 +329,6 @@ class GaugeRenderer {
         private const val MUTED = 0xFF8B95AB.toInt()
         private const val START = 150f
         private const val SWEEP = 240f
+        const val FLASH_MS = 125L
     }
 }

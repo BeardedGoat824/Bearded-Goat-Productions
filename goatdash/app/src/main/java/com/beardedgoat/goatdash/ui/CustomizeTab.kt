@@ -44,7 +44,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -66,6 +68,8 @@ import com.beardedgoat.goatdash.obd.LiveData
 import com.beardedgoat.goatdash.obd.Pid
 import com.beardedgoat.goatdash.obd.Pids
 import com.beardedgoat.goatdash.ui.theme.Muted
+import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 @Composable
@@ -81,8 +85,20 @@ fun CustomizeTab(app: GoatDashApp) {
     val page = config.pages[pageIndex]
     val slot = selected.coerceIn(0, page.slots - 1)
     val gauge = page.gauges[slot]
+    var testFlashUntil by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(testFlashUntil) {
+        if (testFlashUntil > 0) {
+            delay(testFlashUntil - System.currentTimeMillis())
+            testFlashUntil = 0
+        }
+    }
     // Without a car, show made-up readings so the preview still looks like something.
-    val live = if (state is ConnState.Connected) realLive else sampleLive
+    val baseLive = if (state is ConnState.Connected) realLive else sampleLive
+    // "Test flash" pushes the preview's RPM past every shift point on the page for a moment.
+    val live = if (testFlashUntil > 0) {
+        val peak = page.gauges.mapNotNull { it.shiftAt }.maxOrNull()
+        if (peak != null) baseLive.copy(values = baseLive.values + ("RPM" to peak + 100)) else baseLive
+    } else baseLive
 
     fun editGauge(transform: (Gauge) -> Gauge) = app.dashboard.updatePage(pageIndex) { p ->
         p.copy(gauges = p.gauges.mapIndexed { i, g -> if (i == slot) transform(g) else g })
@@ -117,7 +133,11 @@ fun CustomizeTab(app: GoatDashApp) {
 
         // Selected gauge
         SectionCard("Gauge ${slot + 1}") {
-            PidPicker(gauge.pidId) { id -> editGauge { it.copy(pidId = id, warnAbove = Pids[id]?.defaultWarn) } }
+            PidPicker(gauge.pidId) { id ->
+                editGauge {
+                    it.copy(pidId = id, warnAbove = Pids[id]?.defaultWarn, shiftAt = if (Gauge.supportsShiftLight(id)) it.shiftAt else null)
+                }
+            }
 
             Label("Style")
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -143,6 +163,14 @@ fun CustomizeTab(app: GoatDashApp) {
             }
 
             Pids[gauge.pidId]?.let { pid -> WarningEditor(pid, gauge.warnAbove, config.imperial) { w -> editGauge { it.copy(warnAbove = w) } } }
+
+            if (Gauge.supportsShiftLight(gauge.pidId)) {
+                ShiftLightEditor(
+                    gauge,
+                    onChange = { at, color -> editGauge { it.copy(shiftAt = at, shiftColor = color) } },
+                    onTest = { testFlashUntil = System.currentTimeMillis() + 3000 },
+                )
+            }
         }
 
         // Page layout
@@ -239,6 +267,54 @@ private fun WarningEditor(pid: Pid, warnAbove: Double?, imperial: Boolean, onCha
 }
 
 @Composable
+private fun ShiftLightEditor(gauge: Gauge, onChange: (Double?, Int?) -> Unit, onTest: () -> Unit) {
+    val pid = Pids[gauge.pidId] ?: return
+    val shiftAt = gauge.shiftAt
+    HorizontalDivider()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Shift light", fontWeight = FontWeight.SemiBold)
+            Text(
+                if (shiftAt == null) "Off" else "Gauge flashes at ${shiftAt.roundToInt()} rpm and above",
+                style = MaterialTheme.typography.bodySmall,
+                color = Muted,
+            )
+        }
+        Switch(checked = shiftAt != null, onCheckedChange = { on -> onChange(if (on) DEFAULT_SHIFT_RPM else null, gauge.shiftColor) })
+    }
+    if (shiftAt == null) return
+
+    Slider(
+        value = shiftAt.toFloat(),
+        // Snap to 100 rpm steps.
+        onValueChange = { onChange((it / 100f).roundToInt() * 100.0, gauge.shiftColor) },
+        valueRange = 1000f..pid.max.toFloat(),
+    )
+    Label("Flash color")
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        // "Auto" picks the colour opposite the gauge's own, so it always contrasts.
+        val auto = GaugeColors.contrasting(gauge.color)
+        Box(
+            Modifier.size(34.dp).clip(CircleShape).background(Color(auto)).clickable { onChange(shiftAt, null) },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (gauge.shiftColor == null) Icon(Icons.Filled.Check, contentDescription = "Auto (selected)", tint = Color.Black)
+            else Text("A", color = Color.Black, fontWeight = FontWeight.Black)
+        }
+        GaugeColors.shiftPalette.forEach { c ->
+            Box(
+                Modifier.size(34.dp).clip(CircleShape).background(Color(c)).clickable { onChange(shiftAt, c) },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (gauge.shiftColor == c) Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Color.Black)
+            }
+        }
+    }
+    Text("A = automatic: the opposite of the gauge's color.", style = MaterialTheme.typography.bodySmall, color = Muted)
+    OutlinedButton(onClick = onTest) { Text("Test flash") }
+}
+
+@Composable
 private fun Stepper(label: String, value: Int, min: Int, max: Int, onChange: (Int) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, modifier = Modifier.weight(1f))
@@ -249,6 +325,7 @@ private fun Stepper(label: String, value: Int, min: Int, max: Int, onChange: (In
 }
 
 private const val MAX_PAGES = 6
+private const val DEFAULT_SHIFT_RPM = 5500.0
 
 private val sampleLive: LiveData = LiveData(
     values = Pids.all.associate { it.id to it.min + (it.max - it.min) * 0.55 },

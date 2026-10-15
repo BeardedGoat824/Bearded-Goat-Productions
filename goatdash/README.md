@@ -15,6 +15,9 @@ Kotlin, Jetpack Compose, coroutines and the Android for Cars App Library.
 - **Dashboard:** up to 6 pages, each a 1–4 × 1–3 grid. Every gauge picks its sensor,
   style (dial, bar, digital, graph), colour and an optional "turns red above" warning.
   mph/°F/psi or km/h/°C/kPa.
+- **Shift light:** turn any RPM gauge into a shift light. Pick the RPM, and at or above it the
+  whole gauge flashes a contrasting colour (automatic, or one you choose). There's a *Test
+  flash* button, and the demo car winds out to ~6500 rpm once a lap so you can see it.
 - **Android Auto:** the same pages drawn on the car screen. Buttons for next page,
   trouble codes (read-only while driving) and connect/disconnect. Swiping pages on the phone
   flips the car screen too.

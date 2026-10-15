@@ -1,5 +1,6 @@
 package com.beardedgoat.goatdash.dash
 
+import com.beardedgoat.goatdash.obd.LiveData
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -22,18 +23,76 @@ object GaugeColors {
         0xFFF1F5F9.toInt(), // white
     )
     const val WARNING = 0xFFEF4444.toInt()
+
+    /** Bright colours offered for the shift light, alongside "Auto". */
+    val shiftPalette = listOf(0xFF00E5FF.toInt(), 0xFF2979FF.toInt(), 0xFFFF1744.toInt(), 0xFFFFEA00.toInt(), 0xFF76FF03.toInt(), 0xFFFFFFFF.toInt())
+
+    /**
+     * The colour opposite [color] on the colour wheel, at full brightness, so a flash always
+     * stands out from the gauge's normal colour. Greys and white get electric cyan.
+     */
+    fun contrasting(color: Int): Int {
+        val r = (color shr 16 and 0xFF) / 255f
+        val g = (color shr 8 and 0xFF) / 255f
+        val b = (color and 0xFF) / 255f
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        val delta = max - min
+        if (max == 0f || delta / max < 0.25f) return 0xFF00E5FF.toInt()
+        val hue = when (max) {
+            r -> 60f * (((g - b) / delta) % 6f)
+            g -> 60f * ((b - r) / delta + 2f)
+            else -> 60f * ((r - g) / delta + 4f)
+        }
+        return fullColor((hue + 180f + 360f) % 360f)
+    }
+
+    /** Fully saturated, full-brightness colour for a hue in degrees. */
+    private fun fullColor(hue: Float): Int {
+        val x = 1f - kotlin.math.abs((hue / 60f) % 2f - 1f)
+        val (r, g, b) = when ((hue / 60f).toInt()) {
+            0 -> Triple(1f, x, 0f)
+            1 -> Triple(x, 1f, 0f)
+            2 -> Triple(0f, 1f, x)
+            3 -> Triple(0f, x, 1f)
+            4 -> Triple(x, 0f, 1f)
+            else -> Triple(1f, 0f, x)
+        }
+        fun c(v: Float) = Math.round(v * 255)
+        return (0xFF shl 24) or (c(r) shl 16) or (c(g) shl 8) or c(b)
+    }
 }
 
 /**
  * One gauge slot. [warnAbove] is in metric base units (so switching mph/km/h never moves
  * the threshold); null means no warning.
+ *
+ * [shiftAt] turns the gauge into a shift light: at or above that reading the whole tile
+ * flashes [shiftColor] (null = automatically pick a colour that contrasts with [color]).
  */
 data class Gauge(
     val pidId: String,
     val style: GaugeStyle = GaugeStyle.DIAL,
     val color: Int = GaugeColors.palette[0],
     val warnAbove: Double? = null,
-)
+    val shiftAt: Double? = null,
+    val shiftColor: Int? = null,
+) {
+    val flashColor: Int get() = shiftColor ?: GaugeColors.contrasting(color)
+
+    fun isShifting(live: LiveData): Boolean {
+        val at = shiftAt ?: return false
+        val value = live.values[pidId] ?: return false
+        return value >= at
+    }
+
+    companion object {
+        /** Only the RPM gauge offers a shift light. */
+        fun supportsShiftLight(pidId: String) = pidId == "RPM"
+    }
+}
+
+fun DashPage.isShifting(live: LiveData) = gauges.any { it.isShifting(live) }
 
 data class DashPage(
     val name: String,
@@ -78,6 +137,8 @@ data class DashboardConfig(
                                 put("style", g.style.name)
                                 put("color", g.color)
                                 g.warnAbove?.let { put("warnAbove", it) }
+                                g.shiftAt?.let { put("shiftAt", it) }
+                                g.shiftColor?.let { put("shiftColor", it) }
                             })
                         }
                     })
@@ -100,6 +161,8 @@ data class DashboardConfig(
                         style = runCatching { GaugeStyle.valueOf(g.getString("style")) }.getOrDefault(GaugeStyle.DIAL),
                         color = g.optInt("color", GaugeColors.palette[0]),
                         warnAbove = if (g.has("warnAbove")) g.getDouble("warnAbove") else null,
+                        shiftAt = if (g.has("shiftAt")) g.getDouble("shiftAt") else null,
+                        shiftColor = if (g.has("shiftColor")) g.getInt("shiftColor") else null,
                     )
                 }
                 DashPage(p.getString("name"), p.getInt("columns"), p.getInt("rows"), gauges).let { it.resized(it.columns, it.rows) }
@@ -115,7 +178,7 @@ data class DashboardConfig(
                 pages = listOf(
                     DashPage(
                         "Main", 3, 2, listOf(
-                            Gauge("RPM", GaugeStyle.DIAL, orange, 6000.0),
+                            Gauge("RPM", GaugeStyle.DIAL, orange, 6000.0, shiftAt = 5500.0),
                             Gauge("SPEED", GaugeStyle.DIAL, blue),
                             Gauge("COOLANT", GaugeStyle.DIAL, lime, 110.0),
                             Gauge("THROTTLE", GaugeStyle.BAR, orange),
