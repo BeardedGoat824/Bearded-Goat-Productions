@@ -2,13 +2,18 @@ name: Build Spot2YTM APK
 
 on:
   push:
-    branches: [ "main", "master", "ccr-481d7df3-s8c5zj" ]
+    branches: [ "main", "master" ]
+    paths: [ "spot2ytm/**", ".github/workflows/build-spot2ytm.yml" ]
+  pull_request:
     paths: [ "spot2ytm/**", ".github/workflows/build-spot2ytm.yml" ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: spot2ytm
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -21,15 +26,21 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
 
-      - name: Build Debug APK
-        working-directory: spot2ytm
-        run: gradle assembleDebug
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
 
-      - name: Upload Compiled APK
+      - name: Build APKs
+        run: ./gradlew assembleDebug assembleRelease
+
+      - name: Upload release APK (small, optimized — install this one)
         uses: actions/upload-artifact@v4
         with:
-          name: Spot2YTM-APK
+          name: Spot2YTM-release-APK
+          path: spot2ytm/app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Spot2YTM-debug-APK
           path: spot2ytm/app/build/outputs/apk/debug/app-debug.apk

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Spotify-green disc with three sound waves -->
+    <path android:fillColor="#1DB954"
+        android:pathData="M40,37m-15,0a15,15 0,1 1,30 0a15,15 0,1 1,-30 0" />
+    <path android:strokeColor="#0B0D12" android:strokeWidth="2.6" android:strokeLineCap="round"
+        android:pathData="M32,32.5Q40,29.5 48.5,33.5" />
+    <path android:strokeColor="#0B0D12" android:strokeWidth="2.3" android:strokeLineCap="round"
+        android:pathData="M33,37.5Q40,35 47,38.5" />
+    <path android:strokeColor="#0B0D12" android:strokeWidth="2" android:strokeLineCap="round"
+        android:pathData="M34,42Q40,40.5 45.5,43" />
+    <!-- Arrow -->
+    <path android:strokeColor="#EEF1F7" android:strokeWidth="3" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M50,54L58,54M55,50.5L58.5,54L55,57.5" />
+    <!-- YouTube-red play button -->
+    <path android:fillColor="#FF0033"
+        android:pathData="M58,64a6,6 0,0 1,6 -6h12a6,6 0,0 1,6 6v10a6,6 0,0 1,-6 6h-12a6,6 0,0 1,-6 -6z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M67,63.5L75,69L67,74.5z" />
+</vector>
