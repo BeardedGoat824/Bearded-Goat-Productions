@@ -11,6 +11,15 @@ enum class GaugeStyle(val label: String) {
     GRAPH("Graph"),
 }
 
+/** Buttons a music tile (and the car's button bar) can show, in the order they appear. */
+enum class MusicButton(val label: String) {
+    PREVIOUS("Previous"),
+    BACK_15("Back 15s"),
+    PLAY_PAUSE("Play/Pause"),
+    FORWARD_30("Forward 30s"),
+    NEXT("Next"),
+}
+
 /** Gauge colours (ARGB). The first one is the default accent. */
 object GaugeColors {
     val palette = listOf(
@@ -86,7 +95,12 @@ data class Gauge(
         return value >= at
     }
 
+    val isMusic get() = pidId == MUSIC
+
     companion object {
+        /** A slot showing music controls instead of a sensor. */
+        const val MUSIC = "MUSIC"
+
         /** Only the RPM gauge offers a shift light. */
         fun supportsShiftLight(pidId: String) = pidId == "RPM"
     }
@@ -117,13 +131,29 @@ data class DashPage(
     }
 }
 
+/**
+ * @param carFullScreen draw gauges across the whole car screen (Android Auto's buttons float
+ *   on top and hide themselves) instead of shrinking to stay clear of them.
+ * @param musicButtons which buttons music tiles show, kept in [MusicButton] order.
+ * @param carMusicButtons also put the music buttons on the car screen's button bar.
+ */
 data class DashboardConfig(
     val pages: List<DashPage>,
     val imperial: Boolean = true,
+    val carFullScreen: Boolean = true,
+    val musicButtons: List<MusicButton> = DEFAULT_MUSIC_BUTTONS,
+    val carMusicButtons: Boolean = false,
 ) {
+    /** Music buttons for the car's button column; with all five chosen, "back 15s" is left out. */
+    val carMusicStrip: List<MusicButton>
+        get() = if (musicButtons.size > MAX_CAR_MUSIC_BUTTONS) musicButtons - MusicButton.BACK_15 else musicButtons
+
     fun toJson(): String = JSONObject().apply {
         put("version", 1)
         put("imperial", imperial)
+        put("carFullScreen", carFullScreen)
+        put("musicButtons", JSONArray().apply { musicButtons.forEach { put(it.name) } })
+        put("carMusicButtons", carMusicButtons)
         put("pages", JSONArray().apply {
             pages.forEach { page ->
                 put(JSONObject().apply {
@@ -148,6 +178,11 @@ data class DashboardConfig(
     }.toString()
 
     companion object {
+        val DEFAULT_MUSIC_BUTTONS = listOf(MusicButton.PREVIOUS, MusicButton.PLAY_PAUSE, MusicButton.NEXT)
+
+        /** Android Auto's second button column fits four buttons. */
+        const val MAX_CAR_MUSIC_BUTTONS = 4
+
         fun fromJson(json: String): DashboardConfig {
             val root = JSONObject(json)
             val pagesJson = root.getJSONArray("pages")
@@ -167,7 +202,16 @@ data class DashboardConfig(
                 }
                 DashPage(p.getString("name"), p.getInt("columns"), p.getInt("rows"), gauges).let { it.resized(it.columns, it.rows) }
             }
-            return DashboardConfig(pages.ifEmpty { default().pages }, root.optBoolean("imperial", true))
+            val buttons = root.optJSONArray("musicButtons")?.let { arr ->
+                (0 until arr.length()).mapNotNull { runCatching { MusicButton.valueOf(arr.getString(it)) }.getOrNull() }.distinct().sorted()
+            } ?: DEFAULT_MUSIC_BUTTONS
+            return DashboardConfig(
+                pages = pages.ifEmpty { default().pages },
+                imperial = root.optBoolean("imperial", true),
+                carFullScreen = root.optBoolean("carFullScreen", true),
+                musicButtons = buttons,
+                carMusicButtons = root.optBoolean("carMusicButtons", false),
+            )
         }
 
         fun default(): DashboardConfig {
@@ -195,8 +239,9 @@ data class DashboardConfig(
                         ),
                     ),
                     DashPage(
-                        "Cruise", 2, 1, listOf(
+                        "Cruise", 3, 1, listOf(
                             Gauge("SPEED", GaugeStyle.DIGITAL, GaugeColors.palette[6]),
+                            Gauge(Gauge.MUSIC, GaugeStyle.DIGITAL, blue),
                             Gauge("FUEL_LEVEL", GaugeStyle.BAR, orange),
                         ),
                     ),

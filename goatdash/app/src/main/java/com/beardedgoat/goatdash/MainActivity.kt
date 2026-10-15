@@ -31,4 +31,10 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Picks up music access right after the user grants it in Android settings.
+        (application as GoatDashApp).music.start()
+    }
 }

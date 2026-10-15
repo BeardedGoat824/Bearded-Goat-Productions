@@ -1,5 +1,7 @@
 package com.beardedgoat.goatdash.ui
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,6 +9,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +28,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -43,8 +48,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,22 +60,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.beardedgoat.goatdash.GoatDashApp
 import com.beardedgoat.goatdash.dash.DashPage
+import com.beardedgoat.goatdash.dash.DashboardConfig
 import com.beardedgoat.goatdash.dash.Gauge
 import com.beardedgoat.goatdash.dash.GaugeColors
 import com.beardedgoat.goatdash.dash.GaugeStyle
+import com.beardedgoat.goatdash.dash.MusicButton
 import com.beardedgoat.goatdash.obd.ConnState
 import com.beardedgoat.goatdash.obd.LiveData
 import com.beardedgoat.goatdash.obd.Pid
 import com.beardedgoat.goatdash.obd.Pids
 import com.beardedgoat.goatdash.ui.theme.Muted
-import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.coroutines.delay
 
 @Composable
 fun CustomizeTab(app: GoatDashApp) {
@@ -78,6 +86,7 @@ fun CustomizeTab(app: GoatDashApp) {
     val current by app.dashboard.currentPage.collectAsStateWithLifecycle()
     val state by app.obd.state.collectAsStateWithLifecycle()
     val realLive by app.obd.live.collectAsStateWithLifecycle()
+    val music by app.music.state.collectAsStateWithLifecycle()
     var selected by rememberSaveable { mutableIntStateOf(0) }
     var confirmReset by remember { mutableStateOf(false) }
 
@@ -128,7 +137,10 @@ fun CustomizeTab(app: GoatDashApp) {
             Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFF07090D)).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
         ) {
-            GaugePage(page, live, config.imperial, Modifier.fillMaxSize(), selectedSlot = slot, onSlotTap = { selected = it })
+            GaugePage(
+                page, live, config.imperial, Modifier.fillMaxSize(), selectedSlot = slot, onSlotTap = { selected = it },
+                music = music, musicButtons = config.musicButtons,
+            )
         }
 
         // Selected gauge
@@ -139,14 +151,18 @@ fun CustomizeTab(app: GoatDashApp) {
                 }
             }
 
-            Label("Style")
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                GaugeStyle.entries.forEachIndexed { i, style ->
-                    SegmentedButton(
-                        selected = gauge.style == style,
-                        onClick = { editGauge { it.copy(style = style) } },
-                        shape = SegmentedButtonDefaults.itemShape(i, GaugeStyle.entries.size),
-                    ) { Text(style.label) }
+            if (gauge.isMusic) {
+                Text("Shows what's playing with your music buttons. Pick the buttons under Music below.", style = MaterialTheme.typography.bodySmall, color = Muted)
+            } else {
+                Label("Style")
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    GaugeStyle.entries.forEachIndexed { i, style ->
+                        SegmentedButton(
+                            selected = gauge.style == style,
+                            onClick = { editGauge { it.copy(style = style) } },
+                            shape = SegmentedButtonDefaults.itemShape(i, GaugeStyle.entries.size),
+                        ) { Text(style.label) }
+                    }
                 }
             }
 
@@ -193,6 +209,31 @@ fun CustomizeTab(app: GoatDashApp) {
         }
 
         // Global
+        SectionCard("Music") {
+            MusicSettings(
+                hasAccess = music.hasAccess,
+                buttons = config.musicButtons,
+                carButtons = config.carMusicButtons,
+                onButtons = { b -> app.dashboard.update { it.copy(musicButtons = b) } },
+                onCarButtons = { on -> app.dashboard.update { it.copy(carMusicButtons = on) } },
+            )
+        }
+
+        SectionCard("Android Auto") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Full-screen gauges", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Gauges fill the whole car screen. GoatDash's buttons float on top and fade away when you're not touching the screen. " +
+                            "Turn off to shrink the gauges so the buttons never cover them.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
+                    )
+                }
+                Switch(config.carFullScreen, onCheckedChange = { on -> app.dashboard.update { it.copy(carFullScreen = on) } })
+            }
+        }
+
         SectionCard("Units") {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 SegmentedButton(config.imperial, { app.dashboard.update { it.copy(imperial = true) } }, SegmentedButtonDefaults.itemShape(0, 2)) { Text("mph · °F · psi") }
@@ -232,10 +273,12 @@ private fun PidPicker(selectedId: String, onPick: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
-            Text(Pids[selectedId]?.name ?: selectedId, modifier = Modifier.weight(1f))
+            Text(if (selectedId == Gauge.MUSIC) MUSIC_LABEL else Pids[selectedId]?.name ?: selectedId, modifier = Modifier.weight(1f))
             Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
         }
         DropdownMenu(open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text(MUSIC_LABEL) }, onClick = { open = false; onPick(Gauge.MUSIC) })
+            HorizontalDivider()
             Pids.all.forEach { pid ->
                 DropdownMenuItem(text = { Text(pid.name) }, onClick = { open = false; onPick(pid.id) })
             }
@@ -314,6 +357,57 @@ private fun ShiftLightEditor(gauge: Gauge, onChange: (Double?, Int?) -> Unit, on
     OutlinedButton(onClick = onTest) { Text("Test flash") }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MusicSettings(
+    hasAccess: Boolean,
+    buttons: List<MusicButton>,
+    carButtons: Boolean,
+    onButtons: (List<MusicButton>) -> Unit,
+    onCarButtons: (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    if (!hasAccess) {
+        Text(
+            "To show and control what's playing (Spotify, YouTube Music, Pandora, podcasts…), Android needs you to give GoatDash " +
+                "notification access. GoatDash only uses it to see the music player; it doesn't read your notifications.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) { Text("Allow music access") }
+    } else {
+        Text("Music access is on.", style = MaterialTheme.typography.bodySmall, color = Muted)
+    }
+
+    Label("Buttons")
+    // Wrap onto a second line on narrow phones.
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        MusicButton.entries.forEach { b ->
+            val on = b in buttons
+            FilterChip(
+                selected = on,
+                // Keep at least one button, and keep them in their natural left-to-right order.
+                onClick = { if (!on) onButtons((buttons + b).sorted()) else if (buttons.size > 1) onButtons(buttons - b) },
+                label = { Text(b.label) },
+            )
+        }
+    }
+    Text("Add a Music controls tile to any page: tap a gauge above and pick Music controls.", style = MaterialTheme.typography.bodySmall, color = Muted)
+
+    HorizontalDivider()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Music buttons on the car screen", fontWeight = FontWeight.SemiBold)
+            Text(
+                "Adds them as a column of buttons on the Android Auto screen too" +
+                    if (buttons.size > DashboardConfig.MAX_CAR_MUSIC_BUTTONS) " (it fits 4, so Back 15s is left off)." else ".",
+                style = MaterialTheme.typography.bodySmall,
+                color = Muted,
+            )
+        }
+        Switch(carButtons, onCheckedChange = onCarButtons)
+    }
+}
+
 @Composable
 private fun Stepper(label: String, value: Int, min: Int, max: Int, onChange: (Int) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -325,6 +419,7 @@ private fun Stepper(label: String, value: Int, min: Int, max: Int, onChange: (In
 }
 
 private const val MAX_PAGES = 6
+private const val MUSIC_LABEL = "Music controls"
 private const val DEFAULT_SHIFT_RPM = 5500.0
 
 private val sampleLive: LiveData = LiveData(

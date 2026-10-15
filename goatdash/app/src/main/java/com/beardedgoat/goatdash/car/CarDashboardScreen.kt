@@ -24,6 +24,7 @@ import com.beardedgoat.goatdash.GoatDashApp
 import com.beardedgoat.goatdash.R
 import com.beardedgoat.goatdash.dash.DashPage
 import com.beardedgoat.goatdash.dash.GaugeRenderer
+import com.beardedgoat.goatdash.dash.MusicButton
 import com.beardedgoat.goatdash.dash.isShifting
 import com.beardedgoat.goatdash.obd.ConnState
 import kotlinx.coroutines.delay
@@ -57,7 +58,7 @@ class CarDashboardScreen(carContext: CarContext) : Screen(carContext), SurfaceCa
             // Only redraw while the gauges are actually on screen (not behind the codes list).
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
-                    combine(app.obd.live, app.dashboard.config, app.dashboard.currentPage, app.obd.state) { _, _, _, _ -> Unit }
+                    combine(app.obd.live, app.dashboard.config, app.dashboard.currentPage, app.obd.state, app.music.state) { _, _, _, _, _ -> Unit }
                         .conflate()
                         .collect {
                             render()
@@ -71,9 +72,14 @@ class CarDashboardScreen(carContext: CarContext) : Screen(carContext), SurfaceCa
                 }
             }
         }
-        // The action strip changes with the connection (connect vs. disconnect button).
+        // The buttons change with the connection (connect vs. disconnect), the music settings
+        // and whether music is playing (play vs. pause icon).
         lifecycleScope.launch {
-            app.obd.state.map { it is ConnState.Connected || it is ConnState.Connecting }
+            combine(
+                app.obd.state.map { it is ConnState.Connected || it is ConnState.Connecting },
+                app.dashboard.config.map { it.carMusicButtons to it.carMusicStrip },
+                app.music.state.map { it.nowPlaying != null to (it.nowPlaying?.isPlaying == true) },
+            ) { a, b, c -> Triple(a, b, c) }
                 .distinctUntilChanged()
                 .collect { invalidate() }
         }
@@ -112,12 +118,16 @@ class CarDashboardScreen(carContext: CarContext) : Screen(carContext), SurfaceCa
         } ?: return
         try {
             canvas.drawColor(GaugeRenderer.BACKGROUND)
-            // Stay inside the area not covered by Android Auto's own controls.
-            val area = visibleArea?.takeIf { !it.isEmpty } ?: Rect(0, 0, container.width, container.height)
+            val cfg = app.dashboard.config.value
+            val fullScreen = Rect(0, 0, container.width, container.height)
+            // Full screen: use every pixel; Android Auto's buttons float on top and fade away.
+            // Otherwise stay inside the area those buttons never cover.
+            val area = if (cfg.carFullScreen) fullScreen else visibleArea?.takeIf { !it.isEmpty } ?: fullScreen
             val scale = container.dpi / 160f
             renderer.drawPage(
-                canvas, currentPage(), app.obd.live.value, app.dashboard.config.value.imperial,
+                canvas, currentPage(), app.obd.live.value, cfg.imperial,
                 area.left.toFloat(), area.top.toFloat(), area.width().toFloat(), area.height().toFloat(), scale,
+                music = app.music.state.value, musicButtons = cfg.musicButtons,
             )
             statusLine()?.let { msg ->
                 statusPaint.textSize = 16f * scale
@@ -128,6 +138,11 @@ class CarDashboardScreen(carContext: CarContext) : Screen(carContext), SurfaceCa
         } finally {
             s.unlockCanvasAndPost(canvas)
         }
+    }
+
+    /** Taps on the car screen (Android Auto passes these on for car API level 5 and newer). */
+    override fun onClick(x: Float, y: Float) {
+        renderer.musicButtonAt(x, y)?.let { app.music.press(it) }
     }
 
     private fun currentPage(): DashPage {
@@ -171,7 +186,29 @@ class CarDashboardScreen(carContext: CarContext) : Screen(carContext), SurfaceCa
                     .build(),
             )
             .build()
-        return NavigationTemplate.Builder().setActionStrip(strip).build()
+        val template = NavigationTemplate.Builder().setActionStrip(strip)
+        musicStrip()?.let { template.setMapActionStrip(it) }
+        return template.build()
+    }
+
+    /** Optional music buttons in Android Auto's second button column (car API level 2+). */
+    private fun musicStrip(): ActionStrip? {
+        val cfg = app.dashboard.config.value
+        val music = app.music.state.value.nowPlaying
+        if (!cfg.carMusicButtons || music == null || carContext.carAppApiLevel < 2) return null
+        val buttons = cfg.carMusicStrip.ifEmpty { return null }
+        val strip = ActionStrip.Builder()
+        buttons.forEach { b ->
+            val res = when (b) {
+                MusicButton.PREVIOUS -> R.drawable.ic_music_previous
+                MusicButton.BACK_15 -> R.drawable.ic_music_back
+                MusicButton.PLAY_PAUSE -> if (music.isPlaying) R.drawable.ic_music_pause else R.drawable.ic_music_play
+                MusicButton.FORWARD_30 -> R.drawable.ic_music_forward
+                MusicButton.NEXT -> R.drawable.ic_music_next
+            }
+            strip.addAction(Action.Builder().setIcon(icon(res)).setOnClickListener { app.music.press(b) }.build())
+        }
+        return strip.build()
     }
 
     private fun icon(res: Int) = CarIcon.Builder(IconCompat.createWithResource(carContext, res)).build()

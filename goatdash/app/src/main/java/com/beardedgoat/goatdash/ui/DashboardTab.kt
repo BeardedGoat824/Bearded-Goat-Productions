@@ -36,6 +36,7 @@ fun DashboardTab(app: GoatDashApp, onConnect: () -> Unit) {
     val current by app.dashboard.currentPage.collectAsStateWithLifecycle()
     val live by app.obd.live.collectAsStateWithLifecycle()
     val state by app.obd.state.collectAsStateWithLifecycle()
+    val music by app.music.state.collectAsStateWithLifecycle()
 
     // Keep the screen awake while the gauges are showing.
     val view = LocalView.current
@@ -66,7 +67,10 @@ fun DashboardTab(app: GoatDashApp, onConnect: () -> Unit) {
         }
         HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth()) { index ->
             config.pages.getOrNull(index)?.let { page ->
-                GaugePage(page, live, config.imperial, Modifier.fillMaxSize().padding(4.dp))
+                GaugePage(
+                    page, live, config.imperial, Modifier.fillMaxSize().padding(4.dp),
+                    music = music, musicButtons = config.musicButtons, onMusicButton = app.music::press,
+                )
             }
         }
         Row(

@@ -18,9 +18,15 @@ Kotlin, Jetpack Compose, coroutines and the Android for Cars App Library.
 - **Shift light:** turn any RPM gauge into a shift light. Pick the RPM, and at or above it the
   whole gauge flashes a contrasting colour (automatic, or one you choose). There's a *Test
   flash* button, and the demo car winds out to ~6500 rpm once a lap so you can see it.
-- **Android Auto:** the same pages drawn on the car screen. Buttons for next page,
-  trouble codes (read-only while driving) and connect/disconnect. Swiping pages on the phone
-  flips the car screen too.
+- **Android Auto:** the same pages drawn full screen on the car display (GoatDash's buttons
+  float on top and fade away; Android Auto's own system bar always stays). Buttons for next
+  page, trouble codes (read-only while driving) and connect/disconnect. Swiping pages on the
+  phone flips the car screen too.
+- **Music controls:** put a *Music controls* tile on any page to see what's playing (song,
+  artist, album art, app) and control it. Pick which buttons it shows: previous, back 15s,
+  play/pause, forward 30s, next. Optionally add the same buttons as a column on the car
+  screen. Works with any music or podcast app; needs one-time "notification access", which
+  is how Android lets an app control other apps' playback.
 - **Demo mode:** a built-in fake car (it speaks the real ELM327 protocol) so you can set
   everything up without leaving the couch.
 

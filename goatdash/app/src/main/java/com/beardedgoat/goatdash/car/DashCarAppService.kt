@@ -25,7 +25,9 @@ class DashCarAppService : CarAppService() {
 class DashSession : Session() {
     override fun onCreateScreen(intent: Intent): Screen {
         // Plugging into the car is a good moment to reconnect to the scanner.
-        (carContext.applicationContext as GoatDashApp).obd.autoConnectIfIdle()
+        val app = carContext.applicationContext as GoatDashApp
+        app.obd.autoConnectIfIdle()
+        app.music.start()
         return CarDashboardScreen(carContext)
     }
 }

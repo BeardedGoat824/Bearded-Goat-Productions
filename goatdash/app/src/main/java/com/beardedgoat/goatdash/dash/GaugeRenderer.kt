@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import com.beardedgoat.goatdash.music.MusicState
 import com.beardedgoat.goatdash.obd.LiveData
 import com.beardedgoat.goatdash.obd.ObdManager
 import com.beardedgoat.goatdash.obd.Pid
@@ -26,11 +27,14 @@ class GaugeRenderer {
     private val panelStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
     private val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
     private val rect = RectF()
     private val path = Path()
+
+    // Where music buttons were drawn on the last frame, so taps can be matched to them.
+    private val musicHits = mutableListOf<Pair<RectF, MusicButton>>()
 
     // Ink colours for the gauge being drawn; they flip to black/white while a shift light flashes.
     private var ink = TEXT
@@ -55,6 +59,9 @@ class GaugeRenderer {
         }
     }
 
+    /** The music button drawn under the point on the last frame, if any. */
+    fun musicButtonAt(x: Float, y: Float): MusicButton? = musicHits.firstOrNull { it.first.contains(x, y) }?.second
+
     /** Index of the gauge under the point, or -1. */
     fun slotAt(page: DashPage, x: Float, y: Float, width: Float, height: Float, scale: Float): Int =
         cellRects(page, 0f, 0f, width, height, scale).indexOfFirst { it.contains(x, y) }
@@ -71,11 +78,18 @@ class GaugeRenderer {
         scale: Float,
         selectedSlot: Int = -1,
         nowMillis: Long = System.currentTimeMillis(),
+        music: MusicState? = null,
+        musicButtons: List<MusicButton> = emptyList(),
     ) {
+        musicHits.clear()
         // Shift lights blink on and off together, a few times a second.
         val flashPhase = (nowMillis / FLASH_MS) % 2 == 0L
         cellRects(page, left, top, width, height, scale).forEachIndexed { i, cell ->
             val gauge = page.gauges.getOrNull(i) ?: return@forEachIndexed
+            if (gauge.isMusic) {
+                drawMusic(canvas, cell, gauge, music, musicButtons, scale, selected = i == selectedSlot)
+                return@forEachIndexed
+            }
             val pid = Pids[gauge.pidId] ?: return@forEachIndexed
             drawGauge(canvas, cell, gauge, pid, live, imperial, scale, selected = i == selectedSlot, flashPhase = flashPhase)
         }
@@ -304,6 +318,136 @@ class GaugeRenderer {
         path.close()
         fill.color = (color and 0x00FFFFFF) or 0x33000000
         canvas.drawPath(path, fill)
+    }
+
+    private fun drawMusic(canvas: Canvas, cell: RectF, gauge: Gauge, music: MusicState?, buttons: List<MusicButton>, scale: Float, selected: Boolean) {
+        ink = TEXT
+        muted = MUTED
+        track = TRACK
+        small.color = muted
+        panel.color = PANEL
+        val radius = 14f * scale
+        canvas.drawRoundRect(cell, radius, radius, panel)
+        panelStroke.strokeWidth = (if (selected) 2.5f else 1f) * scale
+        panelStroke.color = if (selected) Color.WHITE else PANEL_EDGE
+        canvas.drawRoundRect(cell, radius, radius, panelStroke)
+
+        val pad = 12f * scale
+        val now = music?.nowPlaying
+
+        // Buttons along the bottom, spread evenly.
+        val showButtons = now != null && buttons.isNotEmpty()
+        val slotW = (cell.width() - pad * 2) / buttons.size.coerceAtLeast(1)
+        val btn = min(min(cell.height() * 0.34f, slotW * 0.8f), 64f * scale)
+        val rowY = cell.bottom - pad - btn / 2
+        if (showButtons) {
+            buttons.forEachIndexed { i, b ->
+                val cx = cell.left + pad + slotW * (i + 0.5f)
+                drawMusicButton(canvas, b, cx, rowY, btn, now!!.isPlaying, gauge.color, scale)
+                // Generous touch target: the whole column of the row, not just the icon.
+                musicHits += RectF(cx - slotW / 2, rowY - btn / 2 - pad / 2, cx + slotW / 2, rowY + btn / 2 + pad / 2) to b
+            }
+        }
+
+        // Track info above the buttons: album art on the left, text beside it.
+        val top = cell.top + pad
+        val bottom = if (showButtons) rowY - btn / 2 - pad * 0.6f else cell.bottom - pad
+        val blockH = bottom - top
+        if (blockH <= 4f * scale) return
+        var left = cell.left + pad
+        val art = now?.art
+        if (art != null && blockH > 24f * scale) {
+            val size = min(blockH, cell.width() * 0.35f)
+            val artTop = top + (blockH - size) / 2
+            rect.set(left, artTop, left + size, artTop + size)
+            canvas.drawBitmap(art, null, rect, fill)
+            left += size + pad * 0.8f
+        }
+        val width = cell.right - pad - left
+        if (width <= 0f) return
+
+        val (first, second, third) = when {
+            music == null || !music.hasAccess -> Triple("Music", "Allow access in GoatDash", "Customize → Music")
+            now == null -> Triple("Nothing playing", "Start music in any app", null)
+            else -> Triple(now.title ?: "Unknown track", now.artist, now.appName)
+        }
+        val titleSize = min(blockH * 0.32f, 20f * scale)
+        val subSize = titleSize * 0.78f
+        val total = titleSize + (if (second != null) subSize * 1.35f else 0f) + (if (third != null) subSize * 1.25f else 0f)
+        var y = top + (blockH - total).coerceAtLeast(0f) / 2 + titleSize
+
+        text.color = ink
+        text.textAlign = Paint.Align.LEFT
+        text.textSize = titleSize
+        canvas.drawText(ellipsize(text, first, width), left, y, text)
+        small.textAlign = Paint.Align.LEFT
+        if (second != null) {
+            y += subSize * 1.35f
+            small.textSize = subSize
+            small.color = ink and 0xCCFFFFFF.toInt()
+            canvas.drawText(ellipsize(small, second, width), left, y, small)
+            small.color = muted
+        }
+        if (third != null) {
+            y += subSize * 1.25f
+            small.textSize = subSize * 0.85f
+            small.color = gauge.color
+            canvas.drawText(ellipsize(small, third, width), left, y, small)
+            small.color = muted
+        }
+    }
+
+    private fun drawMusicButton(canvas: Canvas, button: MusicButton, cx: Float, cy: Float, size: Float, playing: Boolean, color: Int, scale: Float) {
+        val s = size * 0.42f
+        path.reset()
+        when (button) {
+            MusicButton.PLAY_PAUSE -> {
+                fill.color = color
+                canvas.drawCircle(cx, cy, size / 2, fill)
+                fill.color = BACKGROUND
+                if (playing) {
+                    canvas.drawRect(cx - s * 0.4f, cy - s * 0.5f, cx - s * 0.1f, cy + s * 0.5f, fill)
+                    canvas.drawRect(cx + s * 0.1f, cy - s * 0.5f, cx + s * 0.4f, cy + s * 0.5f, fill)
+                } else {
+                    path.moveTo(cx - s * 0.32f, cy - s * 0.52f)
+                    path.lineTo(cx + s * 0.55f, cy)
+                    path.lineTo(cx - s * 0.32f, cy + s * 0.52f)
+                    path.close()
+                    canvas.drawPath(path, fill)
+                }
+            }
+            MusicButton.NEXT, MusicButton.PREVIOUS -> {
+                // Triangle pointing the way we skip, plus a bar at the end.
+                val dir = if (button == MusicButton.NEXT) 1f else -1f
+                fill.color = ink
+                path.moveTo(cx - dir * s * 0.5f, cy - s * 0.5f)
+                path.lineTo(cx + dir * s * 0.3f, cy)
+                path.lineTo(cx - dir * s * 0.5f, cy + s * 0.5f)
+                path.close()
+                canvas.drawPath(path, fill)
+                val barX = cx + dir * s * 0.3f
+                canvas.drawRect(min(barX, barX + dir * s * 0.2f), cy - s * 0.5f, maxOf(barX, barX + dir * s * 0.2f), cy + s * 0.5f, fill)
+            }
+            MusicButton.BACK_15, MusicButton.FORWARD_30 -> {
+                arc.color = ink
+                arc.strokeWidth = 2f * scale
+                canvas.drawCircle(cx, cy, size * 0.36f, arc)
+                small.color = ink
+                small.textAlign = Paint.Align.CENTER
+                small.textSize = size * 0.3f
+                val label = if (button == MusicButton.BACK_15) "-15" else "+30"
+                canvas.drawText(label, cx, cy + small.textSize * 0.36f, small)
+                small.color = muted
+            }
+        }
+    }
+
+    /** Cuts [s] down with "…" so it fits in [maxWidth] at [paint]'s current size. */
+    private fun ellipsize(paint: Paint, s: String, maxWidth: Float): String {
+        if (paint.measureText(s) <= maxWidth) return s
+        var end = s.length
+        while (end > 0 && paint.measureText(s, 0, end) + paint.measureText("…") > maxWidth) end--
+        return s.substring(0, end).trimEnd() + "…"
     }
 
     private fun isLight(color: Int): Boolean {
