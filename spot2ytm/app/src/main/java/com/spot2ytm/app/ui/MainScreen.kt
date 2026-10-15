@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
@@ -212,7 +213,7 @@ private fun SpotifyStep(state: UiState, vm: MainViewModel) {
 @Composable
 private fun MatchHeader(state: UiState, vm: MainViewModel) {
     val total = state.tracks.size
-    val processed = state.tracks.count { it.status == MatchStatus.MATCHED || it.status == MatchStatus.NOT_FOUND }
+    val processed = state.tracks.count { it.status == MatchStatus.MATCHED || it.status == MatchStatus.NOT_FOUND || it.status == MatchStatus.FAILED }
     StepCard(
         title = "2. Match on YouTube ($total)",
         trailing = {
@@ -269,6 +270,11 @@ private fun TrackRow(index: Int, track: Track, canRemove: Boolean, onRemove: () 
                 Icon(Icons.Filled.ErrorOutline, null, tint = Danger, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Not found", color = Danger, fontSize = 12.sp)
+            }
+            MatchStatus.FAILED -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Refresh, null, tint = Warn, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Retry", color = Warn, fontSize = 12.sp)
             }
         }
         IconButton(onClick = onRemove, enabled = canRemove, modifier = Modifier.size(36.dp)) {

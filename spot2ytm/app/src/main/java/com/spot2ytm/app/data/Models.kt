@@ -1,6 +1,7 @@
 package com.spot2ytm.app.data
 
-enum class MatchStatus { PENDING, SEARCHING, MATCHED, NOT_FOUND }
+/** FAILED = YouTube couldn't be reached (worth retrying); NOT_FOUND = YouTube answered with no match. */
+enum class MatchStatus { PENDING, SEARCHING, MATCHED, NOT_FOUND, FAILED }
 
 data class Track(
     val title: String,
