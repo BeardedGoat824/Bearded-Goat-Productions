@@ -139,58 +139,39 @@ class YouTubeRepository {
         else -> e.message ?: e.javaClass.simpleName
     }
 
-    /** Creates a private playlist on the signed-in account and inserts every video. */
-    suspend fun createPlaylist(
-        accessToken: String,
-        title: String,
-        videoIds: List<String>,
-        onProgress: (inserted: Int, total: Int) -> Unit,
-        onSkip: (videoId: String, reason: String) -> Unit,
-    ): CreatedPlaylist {
-        val auth = "Bearer $accessToken"
-        val createBody = JSONObject()
+    /** Creates a private playlist on the signed-in account and returns its ID. */
+    suspend fun createPlaylist(accessToken: String, title: String): String {
+        val body = JSONObject()
             .put("snippet", JSONObject().put("title", title).put("description", "Imported from Spotify via Spot2YTM"))
             .put("status", JSONObject().put("privacyStatus", "private"))
-        val created = JSONObject(
-            Http.execute(
-                Request.Builder()
-                    .url("https://www.googleapis.com/youtube/v3/playlists?part=snippet,status")
-                    .header("Authorization", auth)
-                    .post(createBody.toString().toRequestBody(jsonType))
-                    .build()
-            )
+        val created = dataApi("https://www.googleapis.com/youtube/v3/playlists?part=snippet,status", accessToken, body)
+        return JSONObject(created).getString("id")
+    }
+
+    /** Adds one video to the end of a playlist. */
+    suspend fun addToPlaylist(accessToken: String, playlistId: String, videoId: String) {
+        val body = JSONObject().put(
+            "snippet", JSONObject()
+                .put("playlistId", playlistId)
+                .put("resourceId", JSONObject().put("kind", "youtube#video").put("videoId", videoId))
         )
-        val playlistId = created.getString("id")
-
-        var added = 0
-        videoIds.forEachIndexed { index, videoId ->
-            onProgress(index, videoIds.size)
-            val itemBody = JSONObject().put(
-                "snippet", JSONObject()
-                    .put("playlistId", playlistId)
-                    .put("resourceId", JSONObject().put("kind", "youtube#video").put("videoId", videoId))
-            )
-            try {
-                Http.execute(
-                    Request.Builder()
-                        .url("https://www.googleapis.com/youtube/v3/playlistItems?part=snippet")
-                        .header("Authorization", auth)
-                        .post(itemBody.toString().toRequestBody(jsonType))
-                        .build()
-                )
-                added++
-            } catch (e: HttpException) {
-                onSkip(videoId, "HTTP ${e.code}")
-            }
-            delay(300) // stay well under YouTube's write rate limits
-        }
-        onProgress(videoIds.size, videoIds.size)
-        return CreatedPlaylist(playlistId, added)
+        dataApi("https://www.googleapis.com/youtube/v3/playlistItems?part=snippet", accessToken, body)
     }
 
-    data class CreatedPlaylist(val id: String, val added: Int) {
-        val musicUrl: String get() = "https://music.youtube.com/playlist?list=$id"
+    /** POSTs to the YouTube Data API, turning HTTP errors into [GoogleApiError] with Google's reason attached. */
+    private suspend fun dataApi(url: String, accessToken: String, body: JSONObject): String = try {
+        Http.execute(
+            Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $accessToken")
+                .post(body.toString().toRequestBody(jsonType))
+                .build()
+        )
+    } catch (e: HttpException) {
+        throw GoogleApiError.from(e)
     }
+
+    fun playlistMusicUrl(playlistId: String) = "https://music.youtube.com/playlist?list=$playlistId"
 
     companion object {
         private const val SONGS_FILTER = "EgWKAQIIAWoKEAkQBRAKEAMQBA=="

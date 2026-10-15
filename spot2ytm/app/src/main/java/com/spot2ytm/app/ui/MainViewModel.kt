@@ -3,6 +3,7 @@ package com.spot2ytm.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.spot2ytm.app.data.GoogleApiError
 import com.spot2ytm.app.data.HttpException
 import com.spot2ytm.app.data.MatchStatus
 import com.spot2ytm.app.data.Settings
@@ -13,6 +14,7 @@ import com.spot2ytm.app.data.YouTubeRepository
 import com.spot2ytm.app.data.Http
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +30,9 @@ enum class Tone { NEUTRAL, OK, WARN, ERROR }
 
 data class StatusLine(val text: String, val tone: Tone = Tone.NEUTRAL)
 
+/** A playlist already created on YouTube and the songs already handled, so a failed export can resume. */
+data class ExportProgress(val playlistId: String, val done: Set<String> = emptySet())
+
 data class UiState(
     val input: String = "",
     val inputStatus: StatusLine = StatusLine("Paste a Spotify playlist link, or share one from the Spotify app."),
@@ -40,12 +45,15 @@ data class UiState(
     val isExporting: Boolean = false,
     val exportStatus: StatusLine = StatusLine("Needs a Google access token starting with \"ya29.\"."),
     val exportedPlaylistUrl: String? = null,
+    val exportProgress: ExportProgress? = null,
     val clientId: String = "",
     val clientSecret: String = "",
     val log: List<String> = listOf("Ready."),
 ) {
     val matchedIds: List<String> get() = tracks.mapNotNull { it.videoId }
     val queueLinks: List<String> get() = YouTubeRepository.queueLinks(matchedIds)
+    /** Songs still to add when resuming an export (0 when there is nothing to resume). */
+    val exportRemaining: Int get() = exportProgress?.let { p -> matchedIds.count { it !in p.done } } ?: 0
     val detectedPlaylistId: String? get() = SpotifyLinks.extractPlaylistId(input)
 }
 
@@ -128,6 +136,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         inputStatus = StatusLine("Loaded ${playlist.name?.let { n -> "\"$n\" " } ?: ""}(${playlist.tracks.size} tracks) via $source.", Tone.OK),
                         matchStatus = StatusLine("${playlist.tracks.size} tracks ready to match."),
                         exportedPlaylistUrl = null,
+                        exportProgress = null,
                     )
                 }
                 log("Loaded ${playlist.tracks.size} tracks via $source.")
@@ -149,6 +158,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 inputStatus = StatusLine("Loaded ${tracks.size} tracks from pasted text.", Tone.OK),
                 matchStatus = StatusLine("${tracks.size} tracks ready to match."),
                 exportedPlaylistUrl = null,
+                exportProgress = null,
             )
         }
         log("Loaded ${tracks.size} tracks from pasted text.")
@@ -280,32 +290,58 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         viewModelScope.launch {
-            _state.update { it.copy(isExporting = true, exportedPlaylistUrl = null, exportStatus = StatusLine("Creating playlist…", Tone.WARN)) }
+            _state.update { it.copy(isExporting = true, exportedPlaylistUrl = null) }
             try {
-                val created = youtube.createPlaylist(
-                    accessToken = s.youtubeToken,
-                    title = s.playlistTitle.ifBlank { "Spotify Import" },
-                    videoIds = ids,
-                    onProgress = { n, total ->
-                        _state.update { it.copy(exportStatus = StatusLine("Adding songs… $n of $total", Tone.WARN)) }
-                    },
-                    onSkip = { id, reason -> log("Skipped video $id ($reason)") },
-                )
-                log("Created YouTube playlist ${created.id}")
+                // Resume into the playlist made last time, or create a new one.
+                val progress = s.exportProgress ?: run {
+                    _state.update { it.copy(exportStatus = StatusLine("Creating playlist…", Tone.WARN)) }
+                    val id = youtube.createPlaylist(s.youtubeToken, s.playlistTitle.ifBlank { "Spotify Import" })
+                    log("Created YouTube playlist $id")
+                    ExportProgress(id).also { p -> _state.update { it.copy(exportProgress = p) } }
+                }
+                val todo = ids.filter { it !in progress.done }
+                var added = 0
+                var skipped = 0
+                todo.forEachIndexed { i, videoId ->
+                    _state.update { it.copy(exportStatus = StatusLine("Adding songs… ${i + 1} of ${todo.size}", Tone.WARN)) }
+                    try {
+                        youtube.addToPlaylist(s.youtubeToken, progress.playlistId, videoId)
+                        added++
+                    } catch (e: GoogleApiError) {
+                        if (e.stopsWholeExport) throw e
+                        skipped++
+                        log("Skipped video $videoId (${e.message})")
+                    }
+                    _state.update { st -> st.copy(exportProgress = st.exportProgress?.let { it.copy(done = it.done + videoId) }) }
+                    delay(300) // stay well under YouTube's write rate limits
+                }
+                val skippedNote = if (skipped > 0) " $skipped couldn't be added (see log)." else ""
                 _state.update {
                     it.copy(
-                        exportStatus = StatusLine("Done! Added ${created.added} of ${ids.size} songs.", Tone.OK),
-                        exportedPlaylistUrl = created.musicUrl,
+                        exportStatus = StatusLine("Done! Added $added songs.$skippedNote", Tone.OK),
+                        exportedPlaylistUrl = youtube.playlistMusicUrl(progress.playlistId),
+                        exportProgress = null,
                     )
                 }
+            } catch (e: GoogleApiError) {
+                log("Export failed: ${e.message}")
+                val resumeNote = state.value.exportProgress?.let { p ->
+                    val left = state.value.exportRemaining
+                    if (left > 0) " The playlist was created and ${p.done.size} songs are in it — fix this, then tap Resume to add the other $left." else ""
+                } ?: ""
+                _state.update { it.copy(exportStatus = StatusLine(e.explanation + resumeNote, Tone.ERROR)) }
             } catch (e: Exception) {
-                val message = if (e is HttpException && e.code == 401) "Token expired or invalid — grab a fresh one." else e.describe()
                 log("Export failed: ${e.describe()}")
-                _state.update { it.copy(exportStatus = StatusLine(message, Tone.ERROR)) }
+                _state.update { it.copy(exportStatus = StatusLine("Couldn't reach YouTube (${e.describe()}). Check your connection and tap the button again.", Tone.ERROR)) }
             } finally {
                 _state.update { it.copy(isExporting = false) }
             }
         }
+    }
+
+    /** Forget a half-finished export so the next tap creates a brand-new playlist. */
+    fun startNewExport() = _state.update {
+        it.copy(exportProgress = null, exportStatus = StatusLine("The next export will create a new playlist."))
     }
 
     private fun Exception.describe(): String = when (this) {

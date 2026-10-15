@@ -59,6 +59,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -343,7 +344,13 @@ private fun ExportStep(state: UiState, vm: MainViewModel, context: Context) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                 Spacer(Modifier.width(8.dp))
             }
-            Text("Create YouTube Music playlist")
+            val resuming = state.exportProgress != null && state.exportRemaining > 0
+            Text(if (resuming) "Resume adding songs (${state.exportRemaining} left)" else "Create YouTube Music playlist")
+        }
+        if (state.exportProgress != null && !state.isExporting) {
+            TextButton(onClick = vm::startNewExport, modifier = Modifier.fillMaxWidth()) {
+                Text("Start a new playlist instead")
+            }
         }
         Status(state.exportStatus)
         state.exportedPlaylistUrl?.let { url ->
