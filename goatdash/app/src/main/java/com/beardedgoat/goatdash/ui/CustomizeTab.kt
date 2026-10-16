@@ -374,6 +374,16 @@ private fun MusicSettings(
             style = MaterialTheme.typography.bodySmall,
         )
         Button(onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) { Text("Allow music access") }
+        Text(
+            "Greyed out with \"Controlled by restricted setting\"? Android blocks this for apps installed outside the Play Store. " +
+                "Try once so Android shows that message, then go to Settings → Apps → GoatDash → ⋮ (top right) → " +
+                "Allow restricted settings, confirm, and come back here.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Muted,
+        )
+        TextButton(onClick = {
+            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)))
+        }) { Text("Open GoatDash app info") }
     } else {
         Text("Music access is on.", style = MaterialTheme.typography.bodySmall, color = Muted)
     }
