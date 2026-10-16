@@ -78,7 +78,7 @@ class CarDashboardScreen(carContext: CarContext) : Screen(carContext), SurfaceCa
             combine(
                 app.obd.state.map { it is ConnState.Connected || it is ConnState.Connecting },
                 app.dashboard.config.map { it.carMusicButtons to it.carMusicStrip },
-                app.music.state.map { it.nowPlaying != null to (it.nowPlaying?.isPlaying == true) },
+                app.music.state.map { it.nowPlaying?.isPlaying == true },
             ) { a, b, c -> Triple(a, b, c) }
                 .distinctUntilChanged()
                 .collect { invalidate() }
@@ -194,15 +194,15 @@ class CarDashboardScreen(carContext: CarContext) : Screen(carContext), SurfaceCa
     /** Optional music buttons in Android Auto's second button column (car API level 2+). */
     private fun musicStrip(): ActionStrip? {
         val cfg = app.dashboard.config.value
-        val music = app.music.state.value.nowPlaying
-        if (!cfg.carMusicButtons || music == null || carContext.carAppApiLevel < 2) return null
+        val playing = app.music.state.value.nowPlaying?.isPlaying == true
+        if (!cfg.carMusicButtons || carContext.carAppApiLevel < 2) return null
         val buttons = cfg.carMusicStrip.ifEmpty { return null }
         val strip = ActionStrip.Builder()
         buttons.forEach { b ->
             val res = when (b) {
                 MusicButton.PREVIOUS -> R.drawable.ic_music_previous
                 MusicButton.BACK_15 -> R.drawable.ic_music_back
-                MusicButton.PLAY_PAUSE -> if (music.isPlaying) R.drawable.ic_music_pause else R.drawable.ic_music_play
+                MusicButton.PLAY_PAUSE -> if (playing) R.drawable.ic_music_pause else R.drawable.ic_music_play
                 MusicButton.FORWARD_30 -> R.drawable.ic_music_forward
                 MusicButton.NEXT -> R.drawable.ic_music_next
             }

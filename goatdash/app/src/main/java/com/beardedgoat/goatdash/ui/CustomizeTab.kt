@@ -369,8 +369,9 @@ private fun MusicSettings(
     val context = LocalContext.current
     if (!hasAccess) {
         Text(
-            "To show and control what's playing (Spotify, YouTube Music, Pandora, podcasts…), Android needs you to give GoatDash " +
-                "notification access. GoatDash only uses it to see the music player; it doesn't read your notifications.",
+            "The music buttons already work: they act like headphone buttons on whatever app last played. " +
+                "To also show the song, artist and album art, Android needs you to give GoatDash notification access. " +
+                "GoatDash only uses it to see the music player; it doesn't read your notifications.",
             style = MaterialTheme.typography.bodySmall,
         )
         Button(onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) { Text("Allow music access") }

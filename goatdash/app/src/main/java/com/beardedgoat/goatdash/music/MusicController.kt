@@ -3,6 +3,7 @@ package com.beardedgoat.goatdash.music
 import android.content.ComponentName
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -10,6 +11,7 @@ import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.core.app.NotificationManagerCompat
 import com.beardedgoat.goatdash.dash.MusicButton
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -123,7 +125,7 @@ class MusicController(private val context: Context) {
     }
 
     fun press(button: MusicButton) {
-        val c = controller ?: return
+        val c = controller ?: return pressMediaKey(button)
         val controls = c.transportControls
         when (button) {
             MusicButton.PLAY_PAUSE -> if (c.isPlaying()) controls.pause() else controls.play()
@@ -132,6 +134,24 @@ class MusicController(private val context: Context) {
             MusicButton.BACK_15 -> seekBy(c, -15_000)
             MusicButton.FORWARD_30 -> seekBy(c, 30_000)
         }
+    }
+
+    /**
+     * Without notification access (or before anything has played) we can't see the music app,
+     * but we can still send it the same media-key presses headphone and steering-wheel buttons
+     * send. Android delivers them to whichever app last played audio. No permission needed.
+     */
+    private fun pressMediaKey(button: MusicButton) {
+        val code = when (button) {
+            MusicButton.PLAY_PAUSE -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+            MusicButton.PREVIOUS -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
+            MusicButton.NEXT -> KeyEvent.KEYCODE_MEDIA_NEXT
+            MusicButton.BACK_15 -> KeyEvent.KEYCODE_MEDIA_REWIND
+            MusicButton.FORWARD_30 -> KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
+        }
+        val audio = context.getSystemService(AudioManager::class.java) ?: return
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
     }
 
     private fun seekBy(c: MediaController, deltaMs: Long) {

@@ -336,14 +336,15 @@ class GaugeRenderer {
         val now = music?.nowPlaying
 
         // Buttons along the bottom, spread evenly.
-        val showButtons = now != null && buttons.isNotEmpty()
+        // Buttons work even without music access (they fall back to media-key presses).
+        val showButtons = music != null && buttons.isNotEmpty()
         val slotW = (cell.width() - pad * 2) / buttons.size.coerceAtLeast(1)
         val btn = min(min(cell.height() * 0.34f, slotW * 0.8f), 64f * scale)
         val rowY = cell.bottom - pad - btn / 2
         if (showButtons) {
             buttons.forEachIndexed { i, b ->
                 val cx = cell.left + pad + slotW * (i + 0.5f)
-                drawMusicButton(canvas, b, cx, rowY, btn, now!!.isPlaying, gauge.color, scale)
+                drawMusicButton(canvas, b, cx, rowY, btn, now?.isPlaying == true, gauge.color, scale)
                 // Generous touch target: the whole column of the row, not just the icon.
                 musicHits += RectF(cx - slotW / 2, rowY - btn / 2 - pad / 2, cx + slotW / 2, rowY + btn / 2 + pad / 2) to b
             }
@@ -367,7 +368,7 @@ class GaugeRenderer {
         if (width <= 0f) return
 
         val (first, second, third) = when {
-            music == null || !music.hasAccess -> Triple("Music", "Allow access in GoatDash", "Customize → Music")
+            music == null || !music.hasAccess -> Triple("Music", "Buttons control your music app", "Song info: Customize → Music")
             now == null -> Triple("Nothing playing", "Start music in any app", null)
             else -> Triple(now.title ?: "Unknown track", now.artist, now.appName)
         }
