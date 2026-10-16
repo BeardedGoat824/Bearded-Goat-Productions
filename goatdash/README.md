@@ -37,17 +37,27 @@ manifold pressure (MAP), barometric pressure, mass air flow (MAF), timing advanc
 short/long-term fuel trim, fuel rate, ECU voltage, and battery voltage (read by the adapter,
 works on every car). Sensors your car doesn't report show **N/A**.
 
-## Android Auto setup (one time)
+## Getting it onto Android Auto
 
-GoatDash is sideloaded, so Android Auto hides it until you allow unknown sources:
+Android Auto only shows apps built with the Android for Cars App Library (like GoatDash) when
+they're installed from a trusted source such as Google Play. The **Unknown sources**
+developer setting does *not* help here: Google documents that it only covers media,
+messaging and parked apps. A sideloaded APK still works fully on the phone, but won't appear
+in the car's app launcher.
 
-1. Android Auto settings → tap **Version** ~10 times to unlock developer settings.
-2. ⋮ menu → **Developer settings** → enable **Unknown sources**.
-3. Android Auto settings → **Customize launcher** → tick GoatDash.
+The supported way to get it onto the car without a public Play Store listing is Google Play's
+**internal testing** (or **Internal App Sharing**). Google's docs say both skip the Play review
+process:
+
+1. Create a Google Play Console developer account (one-time fee).
+2. Create the GoatDash app there and upload a signed build to the *Internal testing* track
+   (or share it with *Internal App Sharing*).
+3. Add your own Google account as a tester and install GoatDash from the Play Store link.
+4. Android Auto settings → **Customize launcher** → make sure GoatDash is ticked.
 
 Android Auto only lets *navigation* apps draw their own graphics, so GoatDash registers in
-that category to get a canvas for the gauges. That's fine for a personal sideloaded app, but
-Google Play would reject it as-is.
+that category to get a canvas for the gauges. That's fine for a private testing track, but a
+public Play Store release would likely be rejected as-is.
 
 ## Project layout
 

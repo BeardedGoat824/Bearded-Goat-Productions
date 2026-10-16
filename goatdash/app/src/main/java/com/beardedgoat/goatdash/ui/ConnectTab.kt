@@ -289,12 +289,12 @@ private fun WifiCard(onConnect: (ConnectionTarget) -> Unit) {
 private fun AndroidAutoHelp() {
     Section("Showing it in Android Auto", Icons.Filled.DirectionsCar) {
         Text(
-            "Because GoatDash isn't from the Play Store, Android Auto hides it until you allow unknown sources (one-time setup):\n\n" +
-                "1. Open Android Auto settings on your phone (Settings → Connected devices → Android Auto, or search \"Android Auto\").\n" +
-                "2. Scroll to the bottom and tap Version about 10 times until it says developer settings are on.\n" +
-                "3. Tap ⋮ (top right) → Developer settings → turn on Unknown sources.\n" +
-                "4. Back in Android Auto settings → Customize launcher → make sure GoatDash is ticked.\n\n" +
-                "Then plug into your car and open GoatDash from the Android Auto app launcher.",
+            "Android Auto only shows dashboard apps like GoatDash when they're installed from Google Play. " +
+                "The \"Unknown sources\" developer setting doesn't cover this kind of app, so a downloaded APK works on your phone " +
+                "but won't appear in the car's app list.\n\n" +
+                "To use it in the car, install GoatDash through a Google Play internal testing link (a private, unreviewed " +
+                "Play Store listing just for you). Once it's installed that way, check Android Auto settings → Customize launcher " +
+                "and make sure GoatDash is ticked.",
             style = MaterialTheme.typography.bodySmall,
         )
     }
