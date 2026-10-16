@@ -59,6 +59,22 @@ Android Auto only lets *navigation* apps draw their own graphics, so GoatDash re
 that category to get a canvas for the gauges. That's fine for a private testing track, but a
 public Play Store release would likely be rejected as-is.
 
+### On a rooted phone (experimental)
+
+Android Auto decides whether to trust an app by which app installed it. With root you can
+install GoatDash so Android records Google Play as its installer. Reports are mixed on newer
+Android versions, so treat this as an experiment:
+
+```
+adb push app-release.apk /data/local/tmp/goatdash.apk
+adb shell su -c "pm install -r -i com.android.vending /data/local/tmp/goatdash.apk"
+adb shell dumpsys package com.beardedgoat.goatdash | grep -i installer   # should mention com.android.vending
+```
+
+Then force-stop Android Auto (Settings → Apps → Android Auto → Force stop), reconnect, and check
+**Customize launcher**. Always install updates the same way: installing an update by tapping
+the APK makes the phone's normal package installer the "installer" again, which hides GoatDash.
+
 ## Project layout
 
 ```
