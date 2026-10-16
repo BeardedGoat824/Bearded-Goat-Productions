@@ -34,11 +34,19 @@ data class DtcReport(
 class Elm327(private val transport: ObdTransport) {
 
     private val lock = Mutex()
+
+    /** Set after a timeout: the adapter may still be finishing that answer, so let it land first. */
+    private var answerOutstanding = false
     var isCan = true
         private set
 
     /** Sends one command and returns the cleaned reply lines. */
     suspend fun send(command: String, timeoutMs: Long = 3000): List<String> = lock.withLock {
+        if (answerOutstanding) {
+            // Wait (briefly) for the late answer's prompt so it isn't mistaken for this command's reply.
+            waitForPrompt(1500)
+            answerOutstanding = false
+        }
         transport.readAvailable() // Drop anything stale from a previous timed-out command.
         transport.write("$command\r".toByteArray(Charsets.US_ASCII))
         val reply = StringBuilder()
@@ -49,11 +57,27 @@ class Elm327(private val transport: ObdTransport) {
                 reply.append(String(chunk, Charsets.US_ASCII))
                 if (reply.contains('>')) break
             } else {
-                if (System.currentTimeMillis() > deadline) throw IOException("Adapter stopped responding ($command)")
+                if (System.currentTimeMillis() > deadline) {
+                    answerOutstanding = true
+                    throw AdapterTimeoutException(command)
+                }
                 delay(8)
             }
         }
         ObdParser.cleanLines(reply.toString(), command)
+    }
+
+    /** Reads and throws away input until a '>' prompt arrives or [timeoutMs] passes. */
+    private suspend fun waitForPrompt(timeoutMs: Long) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val chunk = transport.readAvailable()
+            if (chunk.isNotEmpty()) {
+                if (chunk.any { it == '>'.code.toByte() }) return
+            } else {
+                delay(8)
+            }
+        }
     }
 
     /** Resets the adapter, finds the car's protocol and collects basic info. */
@@ -111,3 +135,6 @@ class Elm327(private val transport: ObdTransport) {
     /** Mode 04: clears codes and turns off the check-engine light. Returns true on success. */
     suspend fun clearCodes(): Boolean = send("04", 5000).any { it.replace(" ", "").startsWith("44") }
 }
+
+/** The adapter didn't answer in time. Usually a hiccup, not a lost connection. */
+class AdapterTimeoutException(command: String) : IOException("Adapter stopped responding ($command)")

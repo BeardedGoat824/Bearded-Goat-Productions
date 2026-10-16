@@ -114,38 +114,59 @@ class ObdManager(
     fun connect(target: ConnectionTarget) {
         disconnect()
         job = scope.launch {
-            val t = try {
-                buildTransport(target)
-            } catch (e: Exception) {
-                _state.value = ConnState.Failed(target, e.message ?: "Couldn't use this adapter")
-                return@launch
-            }
-            transport = t
-            try {
-                _state.value = ConnState.Connecting(target, "Connecting to adapter…")
-                t.open()
-                _state.value = ConnState.Connecting(target, "Talking to the car…")
-                val e = Elm327(t)
-                val info = e.initialize()
-                elm = e
-                prefs.edit().putString("last_target", target.encode()).apply()
-                _live.value = LiveData(unsupported = unsupportedFrom(info))
-                _state.value = ConnState.Connected(target, info)
-                ObdService.start(context)
-                pollLoop(e)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _state.value = ConnState.Failed(target, e.message ?: e.javaClass.simpleName)
-            } finally {
-                t.close()
-                // Only tidy up if a newer connect()/disconnect() hasn't already taken over.
-                if (transport === t) {
-                    transport = null
-                    elm = null
-                    _live.value = LiveData()
-                    ObdService.stop(context)
+            var everConnected = false
+            var retries = 0
+            while (isActive) {
+                val t = try {
+                    buildTransport(target)
+                } catch (e: Exception) {
+                    _state.value = ConnState.Failed(target, e.message ?: "Couldn't use this adapter")
+                    return@launch
                 }
+                transport = t
+                try {
+                    if (!everConnected) _state.value = ConnState.Connecting(target, "Connecting to adapter…")
+                    t.open()
+                    if (!everConnected) _state.value = ConnState.Connecting(target, "Talking to the car…")
+                    val e = Elm327(t)
+                    val info = e.initialize()
+                    elm = e
+                    prefs.edit().putString("last_target", target.encode()).apply()
+                    // Keep what we learned about unsupported sensors across reconnects.
+                    _live.update { it.copy(unsupported = it.unsupported + unsupportedFrom(info)) }
+                    _state.value = ConnState.Connected(target, info)
+                    everConnected = true
+                    retries = 0
+                    ObdService.start(context)
+                    pollLoop(e)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // A first connect that fails is reported straight away. Once we've been
+                    // connected, a drop is usually a Bluetooth hiccup: quietly try again.
+                    if (!everConnected || ++retries > MAX_RECONNECTS) {
+                        _state.value = ConnState.Failed(
+                            target,
+                            if (everConnected) "Lost the connection and couldn't get it back. Is the car still on?" else e.message ?: e.javaClass.simpleName,
+                        )
+                        return@launch
+                    }
+                    _state.value = ConnState.Connecting(target, "Connection dropped, reconnecting (try $retries of $MAX_RECONNECTS)…")
+                } finally {
+                    t.close()
+                    if (transport === t) {
+                        transport = null
+                        elm = null
+                    }
+                }
+                delay(minOf(2_000L * retries, 10_000L))
+            }
+        }
+        job?.invokeOnCompletion {
+            // Only tidy up if a newer connect()/disconnect() hasn't already taken over.
+            if (transport == null && _state.value !is ConnState.Connected) {
+                _live.update { LiveData(unsupported = it.unsupported) }
+                ObdService.stop(context)
             }
         }
     }
@@ -193,10 +214,12 @@ class ObdManager(
             for (pid in pids) {
                 val value = try {
                     e.read(pid).also { errorsInARow = 0 }
-                } catch (io: IOException) {
-                    if (++errorsInARow >= 3) throw IOException("Lost connection to the adapter")
-                    null
+                } catch (slow: AdapterTimeoutException) {
+                    // Clones sometimes stall for a few seconds; only give up if it keeps happening.
+                    if (++errorsInARow >= MAX_TIMEOUTS_IN_A_ROW) throw IOException("Adapter stopped answering")
+                    continue
                 }
+                // A real Bluetooth/Wi-Fi break throws a plain IOException and goes straight to reconnecting.
                 if (value == null) {
                     // Some cars just don't report some sensors; stop asking after a few misses.
                     if (misses.merge(pid.id, 1, Int::plus)!! >= 4) _live.update { it.copy(unsupported = it.unsupported + pid.id) }
@@ -250,5 +273,7 @@ class ObdManager(
 
     companion object {
         const val HISTORY_SIZE = 90
+        private const val MAX_TIMEOUTS_IN_A_ROW = 6
+        private const val MAX_RECONNECTS = 20
     }
 }
