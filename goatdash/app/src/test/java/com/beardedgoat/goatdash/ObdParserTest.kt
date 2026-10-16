@@ -43,6 +43,14 @@ class ObdParserTest {
     }
 
     @Test
+    fun readsDataWhenACloneIgnoresHeadersOff() {
+        // 11-bit CAN header left on: "7E8 03 41 0C 1A F8"
+        assertEquals(1726.0, Pids["RPM"]!!.decode(ObdParser.mode01Data(lines("7E8 03 41 0C 1A F8\r>"), 0x0C)!!)!!, 0.01)
+        // 29-bit header left on: "18 DA F1 10 03 41 0D 32"
+        assertEquals(0x32, ObdParser.mode01Data(lines("18 DA F1 10 03 41 0D 32\r>"), 0x0D)!![0])
+    }
+
+    @Test
     fun voltageFromAtrv() {
         assertEquals(12.6, ObdParser.voltage(lines("12.6V\r>"))!!, 0.0)
     }
@@ -107,6 +115,10 @@ class ObdParserTest {
         assertTrue(ObdParser.isCanProtocol(listOf("8")))
         assertFalse(ObdParser.isCanProtocol(listOf("A3")))
         assertEquals("ISO 15765-4 CAN (11 bit, 500 kbaud)", ObdParser.protocolName(listOf("A6")))
+        // Clones that don't understand ATDPN answer "?": assume CAN rather than misreading codes.
+        assertTrue(ObdParser.isCanProtocol(listOf("?")))
+        assertTrue(ObdParser.isCanProtocol(emptyList()))
+        assertEquals("Unknown (adapter didn't say)", ObdParser.protocolName(listOf("?")))
     }
 
     @Test

@@ -65,8 +65,14 @@ object ObdParser {
     fun mode01Data(lines: List<String>, pid: Int): IntArray? {
         val marker = "41%02X".format(pid)
         for (msg in messages(lines)) {
-            val i = msg.indexOf(marker)
-            if (i >= 0 && i % 2 == 0) return hexToBytes(msg.substring(i + marker.length).let { it.substring(0, it.length - it.length % 2) })
+            // The marker must start on a byte boundary. If a clone ignored ATH0, an 11-bit CAN
+            // header ("7E8") shifts everything by one hex digit, which makes the message odd-length.
+            val boundary = msg.length % 2
+            var i = msg.indexOf(marker)
+            while (i >= 0) {
+                if (i % 2 == boundary) return hexToBytes(msg.substring(i + marker.length).let { it.substring(0, it.length - it.length % 2) })
+                i = msg.indexOf(marker, i + 1)
+            }
         }
         return null
     }
@@ -140,8 +146,17 @@ object ObdParser {
 
     /** True for OBD protocols 6–9 (CAN), from an "ATDPN" reply like "A6" or "6". */
     fun isCanProtocol(lines: List<String>): Boolean {
-        val p = lines.firstOrNull()?.trim()?.removePrefix("A") ?: return true
-        return p in setOf("6", "7", "8", "9")
+        val p = protocolNumber(lines)
+        // Protocols 1-5 are the pre-CAN ones. Anything else, including a clone answering "?"
+        // because it doesn't know ATDPN, gets CAN: every car sold in the US since 2008 uses it.
+        return p !in setOf("1", "2", "3", "4", "5")
+    }
+
+    /** "A6" (auto-detected 6) -> "6"; null if the adapter didn't give a protocol number. */
+    private fun protocolNumber(lines: List<String>): String? {
+        val raw = lines.firstOrNull()?.trim()?.uppercase() ?: return null
+        val p = if (raw.length == 2 && raw.startsWith("A")) raw.substring(1) else raw
+        return p.takeIf { it.length == 1 && (it[0] in '1'..'9' || it[0] in 'A'..'C') }
     }
 
     private val protocolNames = mapOf(
@@ -153,7 +168,7 @@ object ObdParser {
     )
 
     fun protocolName(lines: List<String>): String {
-        val p = lines.firstOrNull()?.trim()?.let { if (it.length == 2 && it.startsWith("A")) it.substring(1) else it } ?: return "Unknown"
+        val p = protocolNumber(lines) ?: return "Unknown (adapter didn't say)"
         return protocolNames[p] ?: "Protocol $p"
     }
 
